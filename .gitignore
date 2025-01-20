@@ -8,3 +8,9 @@ wheels/
 
 # Virtual environments
 .venv
+
+# File System
+.DS_Store
+
+# Custom files and folders
+DATA
