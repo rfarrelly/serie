@@ -38,7 +38,6 @@ class TestTeamStats(unittest.TestCase):
             "PPG": [3, 1.5],
         }
         expected_df = pd.DataFrame(data)
-        # breakpoint()
 
         assert_frame_equal(stats.get_stats_df, expected_df)
 
