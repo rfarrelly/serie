@@ -14,9 +14,10 @@ def get_fbref_data(
 
     columns = ["Wk", "Day", "Date", "Time", "HomeTeam", "Score", "AwayTeam"]
 
-    data_df = pd.read_html(response.content)[0].dropna(how="any", axis="index")[
-        ["Wk", "Day", "Date", "Time", "Home", "Score", "Away"]
-    ]
+    # Only get played games (i.e games with scores)
+    data_df = pd.read_html(response.content)[0].dropna(
+        how="any", subset="Score", axis="index"
+    )[["Wk", "Day", "Date", "Time", "Home", "Score", "Away"]]
 
     data_df.columns = columns
 
