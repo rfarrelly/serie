@@ -36,17 +36,20 @@ class TestTeamStats(unittest.TestCase):
             "HomePoints": [3, None],
             "AwayPoints": [None, 0],
             "PPG": [3, 1.5],
+            "Team": ["Manchester Utd", "Manchester Utd"],
+            "HomeOpps": [None, "Brighton"],
+            "AwayOpps": ["Fulham", None],
         }
         expected_df = pd.DataFrame(data)
 
-        assert_frame_equal(stats.get_stats_df, expected_df)
+        assert_frame_equal(stats.stats_df, expected_df)
 
     def test__compute_home_and_away_points_success(self):
         team = "Manchester Utd"
         stats = TeamStats(team, self.df)
 
         # Compute home and away points manually
-        expected_df = stats.get_stats_df.copy()
+        expected_df = stats.stats_df.copy()
         expected_df["HomePoints"] = expected_df.apply(
             lambda x: (
                 (3 if x["FTHG"] > x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0)
@@ -64,16 +67,14 @@ class TestTeamStats(unittest.TestCase):
             axis="columns",
         )
 
-        stats._compute_home_and_away_points()
-        assert_frame_equal(stats.get_stats_df, expected_df)
+        stats._setup()
+        assert_frame_equal(stats.stats_df, expected_df)
 
-    def test_compute_ppg__success(self):
+    def test__setup__success(self):
         team = "Manchester Utd"
         stats = TeamStats(team, self.df)
 
-        # Compute PPG manually
-        stats._compute_ppg()
-        computed_ppg = stats.get_stats_df["PPG"].iloc[-1]
+        computed_ppg = stats.stats_df["PPG"].iloc[-1]
 
         # Expected points: 3 (vs Fulham) + 0 (vs Brighton)
         expected_ppg = (3 + 0) / 2  # Total points divided by number of games
@@ -82,7 +83,7 @@ class TestTeamStats(unittest.TestCase):
     def test_get_stats_df__success(self):
         team = "Liverpool"
         stats = TeamStats(team, self.df)
-        filtered_df = stats.get_stats_df
+        filtered_df = stats.stats_df
 
         # Ensure the DataFrame only contains rows related to the specified team
         self.assertTrue(
