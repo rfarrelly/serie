@@ -1,4 +1,4 @@
-from app.common import ingestion, config, stats
+from app.common import ingestion, config, stats, plotting
 
 import pandas as pd
 
@@ -19,18 +19,15 @@ def main():
     # )
 
     all_teams_stats = {team: stats.TeamStats(team, data) for team in teams}
-    rpi = stats.compute_rpi(
-        target_team_stats=all_teams_stats["Manchester Utd"],
-        all_teams_stats=all_teams_stats,
-    )
-    print(all_teams_stats["Manchester Utd"].stats_df)
-    print(rpi)
-    # for team in teams:
-    #     rpi = stats.compute_rpi(
-    #         target_team_stats=all_teams_stats[team],
-    #         all_teams_stats=all_teams_stats,
-    #     )
-    #     print(team, rpi.tail(1).values[0])
+    target_teams = ["Bournemouth", "Liverpool"]
+    dataframes = [
+        stats.compute_rpi(
+            target_team_stats=all_teams_stats[team],
+            all_teams_stats=all_teams_stats,
+        )
+        for team in target_teams
+    ]
+    plotting.plot_compare_team_rolling_stats(dataframes, target_teams, "RPI", 3)
 
 
 if __name__ == "__main__":

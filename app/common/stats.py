@@ -83,7 +83,7 @@ class TeamStats:
         )
 
 
-def process_opponents_points(
+def compute_opponents_weekly_ppg(
     stats_df: pd.DataFrame,
     opponent_column: str,
     points_pivot_table: str,
@@ -117,8 +117,7 @@ def process_opponents_points(
 
 def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStats]):
 
-    #
-    home_opps_points = process_opponents_points(
+    home_opps_points = compute_opponents_weekly_ppg(
         stats_df=target_team_stats.stats_df,
         opponent_column="HomeOpps",
         points_pivot_table="home_points_pivot_table",
@@ -126,7 +125,7 @@ def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStat
         merge_column="HomeTeam",
     )
 
-    away_opps_points = process_opponents_points(
+    away_opps_points = compute_opponents_weekly_ppg(
         stats_df=target_team_stats.stats_df,
         opponent_column="AwayOpps",
         points_pivot_table="away_points_pivot_table",
@@ -140,7 +139,7 @@ def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStat
         .sort_values("Date")
     )
 
-    # Compute the combined home & away average ppg of played opponents
+    # Compute the combined home & away average ppg of opponents played
     home_away_opps_points[home_away_opps_points.columns[4:]] = (
         home_away_opps_points[home_away_opps_points.columns[4:]]
         .expanding()
@@ -148,14 +147,13 @@ def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStat
         .round(2)
     )
 
+    # Average PPG of opponents played spans the diagonal of this dataframe
     opponent_ppg = np.diag(home_away_opps_points[home_away_opps_points.columns[4:]])
-
     home_away_opps_points["OppsPPG"] = opponent_ppg.round(2)
 
+    # Calculate the RPI of the target team
     home_away_opps_points["RPI"] = (
         home_away_opps_points["PPG"] * home_away_opps_points["OppsPPG"]
     ).round(2)
 
-    home_away_opps_points = home_away_opps_points.reset_index(drop=True)
-
-    return home_away_opps_points[["Wk", "RPI"]]
+    return home_away_opps_points.reset_index(drop=True)
