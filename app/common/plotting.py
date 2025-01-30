@@ -1,3 +1,4 @@
+import os
 import matplotlib.pyplot as plt
 import pandas as pd
 
@@ -7,6 +8,9 @@ def plot_compare_team_rolling_stats(
     teams: list[str],
     target_stat: str,
     window: int = 1,
+    show=True,
+    save_path=None,
+    filename=None,
 ):
     """
     Plots rolling statistics comparison for multiple teams.
@@ -16,6 +20,9 @@ def plot_compare_team_rolling_stats(
         teams (list[str]): A list of team names corresponding to the DataFrames.
         target_stat (str): The statistical column to plot.
         window (int): The rolling window size.
+        show (bool): Show the plot in a new window.
+        save_path: The folder to save the plot.
+        filename: The name of the plot.
 
     Returns:
         None
@@ -50,7 +57,15 @@ def plot_compare_team_rolling_stats(
 
     plt.xlabel("Index")
     plt.ylabel(target_stat)
-    plt.title(f"{target_stat} Comparison Across Teams")
+    plt.title(f"{target_stat} Comparison")
     plt.legend()
     plt.grid()
-    plt.show()
+
+    os.makedirs(save_path, exist_ok=True)
+
+    # Save the figure
+    save_file = os.path.join(save_path, filename)
+    plt.savefig(save_file, bbox_inches="tight")
+    print(f"File '{filename}' downloaded and saved to '{save_path}'")
+    if show:
+        plt.show()
