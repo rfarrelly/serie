@@ -1,33 +1,65 @@
 from app.common import ingestion, config, stats, plotting
-
+import os
 import pandas as pd
 
-FBREF_LEAGUE_NAME = config.FbrefLeagueName.EPL
-FBREF_DATA_DIRECTORY = "app/DATA/FBREF"
+BASE_URL = "https://fbref.com/en/comps"
+LEAGUE_CONFIG = config.League.EPL
+LEAGUE_NAME = config.League.EPL.fbref_name
 SEASON = "2024-2025"
+DATA_STORAGE_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
+DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
+RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
+PPG_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/ppg"
+TARGET_TEAMS = ["Wolves", "Aston Villa"]
 
-data = pd.read_csv("app/DATA/FBREF/Premier_League_2024_2025.csv", dtype={"Wk": int})
-teams = set(data["HomeTeam"]).union(data["AwayTeam"])
+
+def get_data(save_path: str):
+    os.makedirs(save_path, exist_ok=True)
+    ingestion.get_fbref_data(
+        url=ingestion.fbref_url_builder(
+            base_url=BASE_URL, league=LEAGUE_CONFIG, season=SEASON
+        ),
+        league_name=LEAGUE_NAME,
+        season=SEASON,
+        dir=DATA_STORAGE_DIRECTORY,
+    )
 
 
 def main():
-    # ingestion.get_fbref_data(
-    #     url=config.fbref_url_builder(league=FBREF_LEAGUE_NAME, season=SEASON),
-    #     league=FBREF_LEAGUE_NAME,
-    #     season=SEASON,
-    #     dir=FBREF_DATA_DIRECTORY,
-    # )
+    get_data(save_path=DATA_STORAGE_DIRECTORY)
+
+    data = pd.read_csv(f"{DATA_STORAGE_DIRECTORY}/{DATA_FILE_NAME}", dtype={"Wk": int})
+    teams = set(data["Home"]).union(data["Away"])
 
     all_teams_stats = {team: stats.TeamStats(team, data) for team in teams}
-    target_teams = ["Bournemouth", "Liverpool"]
     dataframes = [
         stats.compute_rpi(
             target_team_stats=all_teams_stats[team],
             all_teams_stats=all_teams_stats,
         )
-        for team in target_teams
+        for team in TARGET_TEAMS
     ]
-    plotting.plot_compare_team_rolling_stats(dataframes, target_teams, "RPI", 3)
+    # RPI
+    plotting.plot_compare_team_rolling_stats(
+        dataframes=dataframes,
+        teams=TARGET_TEAMS,
+        target_stat="RPI",
+        window=3,
+        show=False,
+        save_path=RPI_PLOTS_SAVE_DIRECORY,
+        filename=f"{TARGET_TEAMS[0]}_{TARGET_TEAMS[1]}.png",
+    )
+
+    # PPG
+    plotting.plot_compare_team_rolling_stats(
+        dataframes=dataframes,
+        teams=TARGET_TEAMS,
+        target_stat="PPG",
+        window=3,
+        show=False,
+        save_path=PPG_PLOTS_SAVE_DIRECORY,
+        filename=f"{TARGET_TEAMS[0]}_{TARGET_TEAMS[1]}",
+    )
 
 
 if __name__ == "__main__":

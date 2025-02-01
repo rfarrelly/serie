@@ -12,8 +12,8 @@ class TestTeamStats(unittest.TestCase):
             "Day": ["Fri", "Sat", "Sat", "Sun"],
             "Date": ["2024-08-16", "2024-08-17", "2024-08-24", "2024-08-25"],
             "Time": ["20:00", "12:30", "15:00", "16:30"],
-            "HomeTeam": ["Manchester Utd", "Ipswich Town", "Brighton", "Liverpool"],
-            "AwayTeam": ["Fulham", "Liverpool", "Manchester Utd", "Brentford"],
+            "Home": ["Manchester Utd", "Ipswich Town", "Brighton", "Liverpool"],
+            "Away": ["Fulham", "Liverpool", "Manchester Utd", "Brentford"],
             "FTHG": [1, 0, 2, 2],
             "FTAG": [0, 2, 1, 0],
         }
@@ -29,8 +29,8 @@ class TestTeamStats(unittest.TestCase):
             "Day": ["Fri", "Sat"],
             "Date": ["2024-08-16", "2024-08-24"],
             "Time": ["20:00", "15:00"],
-            "HomeTeam": ["Manchester Utd", "Brighton"],
-            "AwayTeam": ["Fulham", "Manchester Utd"],
+            "Home": ["Manchester Utd", "Brighton"],
+            "Away": ["Fulham", "Manchester Utd"],
             "FTHG": [1, 2],
             "FTAG": [0, 1],
             "HomePoints": [3, None],
@@ -53,7 +53,7 @@ class TestTeamStats(unittest.TestCase):
         expected_df["HomePoints"] = expected_df.apply(
             lambda x: (
                 (3 if x["FTHG"] > x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0)
-                if x["HomeTeam"] == team
+                if x["Home"] == team
                 else None
             ),
             axis="columns",
@@ -61,7 +61,7 @@ class TestTeamStats(unittest.TestCase):
         expected_df["AwayPoints"] = expected_df.apply(
             lambda x: (
                 (3 if x["FTHG"] < x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0)
-                if x["AwayTeam"] == team
+                if x["Away"] == team
                 else None
             ),
             axis="columns",
@@ -87,7 +87,7 @@ class TestTeamStats(unittest.TestCase):
 
         # Ensure the DataFrame only contains rows related to the specified team
         self.assertTrue(
-            all((filtered_df["HomeTeam"] == team) | (filtered_df["AwayTeam"] == team))
+            all((filtered_df["Home"] == team) | (filtered_df["Away"] == team))
         )
 
 

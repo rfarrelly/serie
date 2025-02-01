@@ -6,7 +6,7 @@ class TeamStats:
     def __init__(self, team: str, df: pd.DataFrame):
         self.team = team
         self.df = (
-            df[(df["HomeTeam"] == team) | (df["AwayTeam"] == team)]
+            df[(df["Home"] == team) | (df["Away"] == team)]
             .copy()
             .reset_index(drop=True)
             .sort_values("Date")
@@ -17,7 +17,7 @@ class TeamStats:
         self.df["HomePoints"] = self.df.apply(
             lambda x: (
                 (3 if x["FTHG"] > x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0)
-                if (x["HomeTeam"] == self.team)
+                if (x["Home"] == self.team)
                 else None
             ),
             axis="columns",
@@ -26,7 +26,7 @@ class TeamStats:
         self.df["AwayPoints"] = self.df.apply(
             lambda x: (
                 (3 if x["FTHG"] < x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0)
-                if (x["AwayTeam"] == self.team)
+                if (x["Away"] == self.team)
                 else None
             ),
             axis="columns",
@@ -35,7 +35,7 @@ class TeamStats:
         self.df["PPG"] = (
             pd.Series(
                 np.where(
-                    self.df["HomeTeam"] == self.team,
+                    self.df["Home"] == self.team,
                     self.df["HomePoints"],
                     self.df["AwayPoints"],
                 )
@@ -47,18 +47,18 @@ class TeamStats:
 
         self.df["Team"] = pd.Series(
             np.where(
-                self.df["HomeTeam"] == self.team,
-                self.df["HomeTeam"],
-                self.df["AwayTeam"],
+                self.df["Home"] == self.team,
+                self.df["Home"],
+                self.df["Away"],
             )
         )
 
         self.df["HomeOpps"] = self.df.apply(
-            lambda x: x["HomeTeam"] if x["HomeTeam"] != self.team else None,
+            lambda x: x["Home"] if x["Home"] != self.team else None,
             axis="columns",
         )
         self.df["AwayOpps"] = self.df.apply(
-            lambda x: x["AwayTeam"] if x["AwayTeam"] != self.team else None,
+            lambda x: x["Away"] if x["Away"] != self.team else None,
             axis="columns",
         )
 
@@ -108,7 +108,7 @@ def compute_opponents_weekly_ppg(
         opponents_points[opponents_points.columns[1:]].T.expanding().mean().T.round(2)
     )
 
-    merged_points = stats_df[["Wk", "Date", "HomeTeam", "AwayTeam", "PPG"]].merge(
+    merged_points = stats_df[["Wk", "Date", "Home", "Away", "PPG"]].merge(
         opponents_points, left_on=merge_column, right_on="Team"
     )
 
@@ -122,7 +122,7 @@ def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStat
         opponent_column="HomeOpps",
         points_pivot_table="home_points_pivot_table",
         all_teams_stats=all_teams_stats,
-        merge_column="HomeTeam",
+        merge_column="Home",
     )
 
     away_opps_points = compute_opponents_weekly_ppg(
@@ -130,12 +130,12 @@ def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStat
         opponent_column="AwayOpps",
         points_pivot_table="away_points_pivot_table",
         all_teams_stats=all_teams_stats,
-        merge_column="AwayTeam",
+        merge_column="Away",
     )
 
     home_away_opps_points = (
         pd.concat([home_opps_points, away_opps_points])
-        .drop(["HomeTeam", "AwayTeam"], axis="columns")
+        .drop(["Home", "Away"], axis="columns")
         .sort_values("Date")
     )
 

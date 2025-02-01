@@ -18,7 +18,7 @@ class TestGetFbrefData(unittest.TestCase):
         mock_requests.return_value.content = StringIO(mock_response_content)
 
         # Directory and file names
-        test_dir = "app/DATA/FBREF"
+        test_dir = "./DATA/FBREF"
         test_league = FbrefLeagueName.EPL
         test_season = "2024-2025"
         expected_filename = f"{test_league.value}_{test_season}.csv".replace("-", "_")
