@@ -69,3 +69,5 @@ def plot_compare_team_rolling_stats(
     print(f"File '{filename}' downloaded and saved to '{save_path}'")
     if show:
         plt.show()
+    else:
+        plt.close()

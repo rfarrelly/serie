@@ -4,13 +4,15 @@ import pandas as pd
 
 BASE_URL = "https://fbref.com/en/comps"
 LEAGUE_CONFIG = config.League.EPL
-LEAGUE_NAME = config.League.EPL.fbref_name
+LEAGUE_NAME = LEAGUE_CONFIG.fbref_name
 SEASON = "2024-2025"
-DATA_STORAGE_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
-DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
+DATA_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
+HISTORICAL_DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
+FUTURE_FIXTURES_FILE_NAME = f"unplayed_{LEAGUE_NAME}_{SEASON}.csv"
 RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
 PPG_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/ppg"
-TARGET_TEAMS = ["Wolves", "Aston Villa"]
+WEEKS = [15, 25]
+WINDOW = 5
 
 
 def get_data(save_path: str):
@@ -21,45 +23,62 @@ def get_data(save_path: str):
         ),
         league_name=LEAGUE_NAME,
         season=SEASON,
-        dir=DATA_STORAGE_DIRECTORY,
+        dir=DATA_DIRECTORY,
     )
 
 
 def main():
-    get_data(save_path=DATA_STORAGE_DIRECTORY)
+    # get_data(save_path=DATA_STORAGE_DIRECTORY)
 
-    data = pd.read_csv(f"{DATA_STORAGE_DIRECTORY}/{DATA_FILE_NAME}", dtype={"Wk": int})
-    teams = set(data["Home"]).union(data["Away"])
+    historical_data_df = pd.read_csv(
+        f"{DATA_DIRECTORY}/{HISTORICAL_DATA_FILE_NAME}", dtype={"Wk": int}
+    )
 
-    all_teams_stats = {team: stats.TeamStats(team, data) for team in teams}
-    dataframes = [
-        stats.compute_rpi(
-            target_team_stats=all_teams_stats[team],
-            all_teams_stats=all_teams_stats,
+    future_fixtures_df = pd.read_csv(
+        f"{DATA_DIRECTORY}/{FUTURE_FIXTURES_FILE_NAME}", dtype={"Wk": int}
+    )
+
+    target_teams = future_fixtures_df[future_fixtures_df["Wk"].isin(WEEKS)][
+        ["Home", "Away"]
+    ].values.tolist()
+
+    teams = set(historical_data_df["Home"]).union(historical_data_df["Away"])
+
+    all_teams_stats = {
+        team: stats.TeamStats(team, historical_data_df) for team in teams
+    }
+
+    for fixture in target_teams:
+        dataframes = []
+        for team in fixture:
+            dataframes.append(
+                stats.compute_rpi(
+                    target_team_stats=all_teams_stats[team],
+                    all_teams_stats=all_teams_stats,
+                )
+            )
+
+        # RPI
+        plotting.plot_compare_team_rolling_stats(
+            dataframes=dataframes,
+            teams=fixture,
+            target_stat="RPI",
+            window=WINDOW,
+            show=False,
+            save_path=RPI_PLOTS_SAVE_DIRECORY,
+            filename=f"{fixture[0]}_{fixture[1]}.png",
         )
-        for team in TARGET_TEAMS
-    ]
-    # RPI
-    plotting.plot_compare_team_rolling_stats(
-        dataframes=dataframes,
-        teams=TARGET_TEAMS,
-        target_stat="RPI",
-        window=3,
-        show=False,
-        save_path=RPI_PLOTS_SAVE_DIRECORY,
-        filename=f"{TARGET_TEAMS[0]}_{TARGET_TEAMS[1]}.png",
-    )
 
-    # PPG
-    plotting.plot_compare_team_rolling_stats(
-        dataframes=dataframes,
-        teams=TARGET_TEAMS,
-        target_stat="PPG",
-        window=3,
-        show=False,
-        save_path=PPG_PLOTS_SAVE_DIRECORY,
-        filename=f"{TARGET_TEAMS[0]}_{TARGET_TEAMS[1]}",
-    )
+        # PPG
+        plotting.plot_compare_team_rolling_stats(
+            dataframes=dataframes,
+            teams=fixture,
+            target_stat="PPG",
+            window=WINDOW,
+            show=False,
+            save_path=PPG_PLOTS_SAVE_DIRECORY,
+            filename=f"{fixture[0]}_{fixture[1]}",
+        )
 
 
 if __name__ == "__main__":
