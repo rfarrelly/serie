@@ -5,7 +5,7 @@ import pandas as pd
 import config, ingestion, plotting
 
 BASE_URL = "https://fbref.com/en/comps"
-LEAGUE_CONFIG = config.League.EL2
+LEAGUE_CONFIG = config.League.EPL
 LEAGUE_NAME = LEAGUE_CONFIG.fbref_name
 SEASON = "2024-2025"
 DATA_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
@@ -13,7 +13,7 @@ HISTORICAL_DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
 FUTURE_FIXTURES_FILE_NAME = f"unplayed_{LEAGUE_NAME}_{SEASON}.csv"
 RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
 PPG_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/ppg"
-WEEKS = [25, 26, 30]
+WEEKS = []
 WINDOW = 1
 
 
@@ -27,6 +27,19 @@ def get_data(save_path: str):
         season=SEASON,
         dir=DATA_DIRECTORY,
     )
+
+
+def process_historical_data():
+
+    files = [
+        os.path.join(DATA_DIRECTORY, f)
+        for f in os.listdir(DATA_DIRECTORY)
+        if os.path.isfile(os.path.join(DATA_DIRECTORY, f))
+    ]
+
+    for file in files:
+        if "unplayed" not in file:
+            df = pd.read_csv(file, dtype={"Wk": int}).sort_values("Date")
 
 
 def main():
@@ -99,3 +112,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    # process_historical_data()
