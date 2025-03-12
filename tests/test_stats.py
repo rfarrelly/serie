@@ -1,7 +1,7 @@
 import unittest
 import pandas as pd
 from pandas.testing import assert_frame_equal
-from app.common.stats import TeamStats
+from app.stats import TeamStats
 
 
 class TestTeamStats(unittest.TestCase):

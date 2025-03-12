@@ -1,6 +1,6 @@
 import pandas as pd
 from curl_cffi import requests
-from app.common.config import League
+from config import League
 
 
 def fbref_url_builder(base_url: str, league: League, season: str = "current"):

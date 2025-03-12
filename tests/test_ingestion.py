@@ -2,8 +2,8 @@ import unittest
 from unittest.mock import patch
 import os
 from io import StringIO
-from app.common.ingestion import get_fbref_data
-from app.common.config import FbrefLeagueName
+from app.ingestion import get_fbref_data
+from app.config import FbrefLeagueName
 
 
 class TestGetFbrefData(unittest.TestCase):
