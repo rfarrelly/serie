@@ -11,7 +11,7 @@ wheels/
 
 # File System
 .DS_Store
-
+*.csv
 # Custom files and folders
 DATA
 HISTORICAL_DATA
