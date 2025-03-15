@@ -87,76 +87,88 @@ def compute_rpi_and_generate_plots():
         team: stats.TeamStats(team, historical_data_df) for team in teams
     }
 
+    candidates = []
+
     for fixture in fixtures.values.tolist():
+
+        week = fixture[0]
+        date = fixture[2]
+        home_team = fixture[4]
+        away_team = fixture[5]
+
         home_rpi_df = stats.compute_rpi(
-            target_team_stats=all_teams_stats[fixture[4]],
+            target_team_stats=all_teams_stats[home_team],
             all_teams_stats=all_teams_stats,
         )
 
         away_rpi_df = stats.compute_rpi(
-            target_team_stats=all_teams_stats[fixture[5]],
+            target_team_stats=all_teams_stats[away_team],
             all_teams_stats=all_teams_stats,
         )
 
         # Get the latest non-NaN RPI values for each team
         home_rpi_latest = home_rpi_df["RPI"][home_rpi_df["RPI"].last_valid_index()]
         away_rpi_latest = away_rpi_df["RPI"][away_rpi_df["RPI"].last_valid_index()]
+
         rpi_latest_diff = round(
             max(home_rpi_latest, away_rpi_latest)
             - min(home_rpi_latest, away_rpi_latest),
             2,
         )
 
-        file_exists = os.path.exists("candidates.csv")
-
-        data = {
-            "Wk": [fixture[0]],
-            "Date": [fixture[2]],
-            "League": [LEAGUE_NAME],
-            "Home": [fixture[4]],
-            "Away": [fixture[5]],
-            "hRPI": [home_rpi_latest],
-            "aRPI": [away_rpi_latest],
-            "RPI_Diff": [rpi_latest_diff],
-        }
-
-        df = pd.DataFrame(data)
-        df = df[df["RPI_Diff"] <= 0.1]
-
-        df.to_csv("candidates.csv", mode="a", header=not file_exists, index=False)
-
-        df = (
-            pd.read_csv("candidates.csv")
-            .sort_values("RPI_Diff")
-            .to_csv("candidates.csv", index=False)
+        candidates.append(
+            {
+                "Wk": week,
+                "Date": date,
+                "League": LEAGUE_NAME,
+                "Home": home_team,
+                "Away": away_team,
+                "hRPI": home_rpi_latest,
+                "aRPI": away_rpi_latest,
+                "RPI_Diff": rpi_latest_diff,
+            }
         )
 
-        # RPI
+        # RPI PLOTS
         plotting.plot_compare_team_rolling_stats(
             dataframes=[home_rpi_df, away_rpi_df],
-            teams=[fixture[4], fixture[5]],
+            teams=[home_team, away_team],
             target_stat="RPI",
             window=WINDOW,
             show=False,
             save_path=RPI_PLOTS_SAVE_DIRECORY,
-            filename=f"{fixture[0]}_{fixture[1]}.png",
+            filename=f"{home_team}_{away_team}.png",
         )
 
-        # PPG
+        # PPG PLOTS
         plotting.plot_compare_team_rolling_stats(
             dataframes=[home_rpi_df, away_rpi_df],
-            teams=[fixture[4], fixture[5]],
+            teams=[home_team, away_team],
             target_stat="PPG",
             window=WINDOW,
             show=False,
             save_path=PPG_PLOTS_SAVE_DIRECORY,
-            filename=f"{fixture[0]}_{fixture[1]}",
+            filename=f"{home_team}_{away_team}",
         )
+
+    # Short-list candidates to bet on
+    candidates_df = pd.DataFrame(candidates)
+    candidates_df = candidates_df[candidates_df["RPI_Diff"] <= 0.1]
+
+    file_exists = os.path.exists("candidates.csv")
+
+    candidates_df.to_csv(
+        "candidates.csv", mode="a", header=not file_exists, index=False
+    )
+
+    candidates_df = (
+        pd.read_csv("candidates.csv")
+        .sort_values("RPI_Diff")
+        .to_csv("candidates.csv", index=False)
+    )
 
 
 if __name__ == "__main__":
 
     # get_data(save_path=DATA_DIRECTORY)
-
     compute_rpi_and_generate_plots()
-    # process_historical_data()
