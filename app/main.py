@@ -68,8 +68,6 @@ def process_historical_data():
 
                 rpi_df[["hRPI", "aRPI"]] = rpi_df[["hRPI", "aRPI"]].ffill()
 
-                breakpoint()
-
 
 def compute_rpi_and_generate_plots():
 
