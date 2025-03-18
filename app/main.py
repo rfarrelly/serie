@@ -17,6 +17,7 @@ RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
 PPG_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/ppg"
 WEEKS = [23, 26, 28, 30]
 WINDOW = 1
+RPI_DIFF_THRESHOLD = 0.1
 
 
 def get_data(save_path: str, season: str = "current"):
@@ -206,7 +207,7 @@ def compute_rpi_and_generate_plots():
 
     # Short-list candidates to bet on
     candidates_df = pd.DataFrame(candidates)
-    candidates_df = candidates_df[candidates_df["RPI_Diff"] <= 0.1]
+    candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
 
     file_exists = os.path.exists("candidates.csv")
 
