@@ -18,8 +18,18 @@ def get_fbref_data(url: str, league_name: str, season: str, dir: str) -> pd.Data
     """
     Fetches and processes football match data from the given FBref URL.
     """
-
-    response = requests.get(url, impersonate="safari_ios")
+    try:
+        print(f"Getting data for url: {url}")
+        response = requests.get(url, impersonate="safari_ios")
+        response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except requests.exceptions.ConnectionError as conn_err:
+        print(f"Connection error occurred: {conn_err}")
+    except requests.exceptions.Timeout as timeout_err:
+        print(f"Timeout error occurred: {timeout_err}")
+    except requests.exceptions.RequestException as req_err:
+        print(f"An error occurred: {req_err}")
 
     columns = ["Wk", "Day", "Date", "Time", "Home", "Score", "Away"]
 

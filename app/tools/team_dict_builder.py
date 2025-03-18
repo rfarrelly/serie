@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import csv
 
 
 def compile_team_names_from_files(data_directory: str) -> set[str]:
@@ -7,52 +8,116 @@ def compile_team_names_from_files(data_directory: str) -> set[str]:
     for root, _, files in os.walk(data_directory):
         for file in files:
             if file.endswith(".csv"):
-                file_list.append(
-                    pd.read_csv(os.path.join(root, file))[["Home", "Away"]]
-                )
+                df = pd.read_csv(os.path.join(root, file))
+                if "HomeTeam" in df.columns:
+                    df = df.rename(columns={"HomeTeam": "Home", "AwayTeam": "Away"})
+                file_list.append(df[["Home", "Away"]])
 
     teams_df = pd.concat(file_list)
 
     return set(teams_df["Home"]).union(teams_df["Away"])
 
 
-fbref_team_names = compile_team_names_from_files("DATA")
+def find_partial_match(team, source_list):
+    team_parts = team.split()
+    for other_team in source_list:
+        if other_team.startswith(team_parts[0]):  # Check if first word matches
+            return other_team
+    return None
 
+
+fbref_team_names = compile_team_names_from_files("DATA/FBREF")
+fbduk_team_names = compile_team_names_from_files("DATA/FBDUK")
 oddsportal_team_names = pd.read_csv("fixtures.csv")[["home", "away"]]
 oddsportal_team_names = set(oddsportal_team_names["home"]).union(
     oddsportal_team_names["away"]
 )
 
-fbref_difference = list(fbref_team_names.difference(oddsportal_team_names))
-oddsportal_difference = list(oddsportal_team_names.difference(fbref_team_names))
-
-fbref_first_words = {team.split(" ")[0]: team for team in fbref_difference}
-
-matched_pairs = {
-    team_a: fbref_first_words.get(team_a.split(" ")[0], None)
-    for team_a in oddsportal_difference
+# Exact matches
+all_teams = fbref_team_names | fbduk_team_names | oddsportal_team_names
+exact_matches = {
+    team: (team, team, team)
+    for team in all_teams
+    if team in fbref_team_names
+    and team in fbduk_team_names
+    and team in oddsportal_team_names
 }
 
-team_dict = pd.DataFrame(
-    matched_pairs.items(), columns=["oddsportal", "fbref"]
-).sort_values("fbref")
+unmatched_teams = {}
+team_mappings = {}
 
-file_exists = os.path.exists("team_dict.csv")
+for team in all_teams:
+    if team in exact_matches:
+        continue
 
-if file_exists:
-    existing_team_dict = pd.read_csv("team_dict.csv")
-    team_dict = team_dict[
-        ~team_dict["oddsportal"].isin(existing_team_dict["oddsportal"])
-        & ~team_dict["fbref"].isin(existing_team_dict["fbref"])
-    ]
-
-    i = input(
-        f"Do you want to add the following teams to the dictionary? (Y/n): \r\n {team_dict}"
+    fbref_match = (
+        team if team in fbref_team_names else find_partial_match(team, fbref_team_names)
+    )
+    fbduk_match = (
+        team if team in fbduk_team_names else find_partial_match(team, fbduk_team_names)
+    )
+    oddsportal_match = (
+        team
+        if team in oddsportal_team_names
+        else find_partial_match(team, oddsportal_team_names)
     )
 
-    if i == "Y":
-        team_dict.to_csv("team_dict.csv", mode="a", header=not file_exists, index=False)
+    if fbref_match and fbduk_match and oddsportal_match:
+        team_mappings[team] = (fbref_match, fbduk_match, oddsportal_match)
     else:
-        pass
+        unmatched_teams[team] = (fbref_match, fbduk_match, oddsportal_match)
 
-print(team_dict)
+# Print unmatched teams for manual checking
+if unmatched_teams:
+    print("Teams needing manual review:")
+    for team, (fbref, fbduk, oddsportal) in unmatched_teams.items():
+        print(
+            f"Standard: {team} | FBREF: {fbref} | FBDUK: {fbduk} | OddsPortal: {oddsportal}"
+        )
+
+
+fieldnames = ["standard_name", "fbref", "fbduk", "oddsportal"]
+
+with open("unmatched_team_dict.csv", "w", newline="", encoding="utf-8") as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    writer.writeheader()
+    for std_name, (fbref, fbduk, oddsportal) in unmatched_teams.items():
+        writer.writerow(
+            {
+                "standard_name": std_name,
+                "fbref": fbref,
+                "fbduk": fbduk,
+                "oddsportal": oddsportal,
+            }
+        )
+
+with open("team_dict.csv", "w", newline="", encoding="utf-8") as f:
+    writer = csv.DictWriter(f, fieldnames=fieldnames)
+    writer.writeheader()
+    for std_name, (fbref, fbduk, oddsportal) in team_mappings.items():
+        writer.writerow(
+            {
+                "standard_name": std_name,
+                "fbref": fbref,
+                "fbduk": fbduk,
+                "oddsportal": oddsportal,
+            }
+        )
+
+    for std_name, (fbref, fbduk, oddsportal) in exact_matches.items():
+        writer.writerow(
+            {
+                "standard_name": std_name,
+                "fbref": fbref,
+                "fbduk": fbduk,
+                "oddsportal": oddsportal,
+            }
+        )
+
+pd.read_csv("unmatched_team_dict.csv").sort_values("standard_name").to_csv(
+    "unmatched_team_dict.csv", index=False
+)
+
+pd.read_csv("team_dict.csv").drop_duplicates(
+    subset="oddsportal", keep="first"
+).sort_values("standard_name").to_csv("team_dict.csv", index=False)
