@@ -17,12 +17,12 @@ HISTORICAL_DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
 FUTURE_FIXTURES_FILE_NAME = f"unplayed_{LEAGUE_NAME}_{SEASON}.csv"
 RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
 PPG_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/ppg"
-WEEKS = [23, 26, 28, 30]
+WEEKS = [30]
 WINDOW = 1
 RPI_DIFF_THRESHOLD = 0.1
 
 
-def get_data(season: str = "current"):
+def get_data(season: str = None):
 
     os.makedirs(FBREF_DATA_DIRECTORY, exist_ok=True)
 
@@ -31,21 +31,20 @@ def get_data(season: str = "current"):
             base_url=FBREF_BASE_URL, league=LEAGUE_CONFIG, season=season
         ),
         league_name=LEAGUE_NAME,
-        season=season,
+        season=season if season else SEASON,
         dir=FBREF_DATA_DIRECTORY,
     )
 
     os.makedirs(FBDUK_DATA_DIRECTORY, exist_ok=True)
 
-    if season == "current":
-        season = SEASON
-
     ingestion.get_fbduk_data(
         url=ingestion.fbduk_url_builder(
-            base_url=FBDUK_BASE_URL, league=LEAGUE_CONFIG, season=season
+            base_url=FBDUK_BASE_URL,
+            league=LEAGUE_CONFIG,
+            season=season if season else SEASON,
         ),
         league_name=LEAGUE_NAME,
-        season=season,
+        season=season if season else SEASON,
         dir=FBDUK_DATA_DIRECTORY,
     )
 
@@ -242,7 +241,7 @@ def compute_rpi_and_generate_plots():
 
 if __name__ == "__main__":
 
-    get_data(season="2024-2025")
+    get_data()
     # compute_rpi_and_generate_plots()
     # process_historical_data()
     # analyse_historical_data()
