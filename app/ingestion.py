@@ -3,10 +3,20 @@ from curl_cffi import requests
 from config import League
 
 
+def write_files(
+    df: pd.DataFrame, dir: str, league_name: str, season: str, prefix: str = None
+):
+    filename = f"{league_name}_{season}.csv"
+    if prefix:
+        filename = prefix + filename
+    df.to_csv(f"{dir}/{filename}", index=False)
+    print(f"File '{filename}' downloaded and saved to '{dir}'")
+
+
 def fbref_url_builder(base_url: str, league: League, season: str = "current"):
 
     league_name = league.fbref_name
-    league_id = league.id
+    league_id = league.fbref_id
 
     if season == "current":
         return f"{base_url}/{league_id}/schedule/{league_name}-Scores-and-Fixtures"
@@ -14,7 +24,15 @@ def fbref_url_builder(base_url: str, league: League, season: str = "current"):
     return f"{base_url}/{league_id}/{season}/schedule/{season}-{league_name}-Scores-and-Fixtures"
 
 
-def get_fbref_data(url: str, league_name: str, season: str, dir: str) -> pd.DataFrame:
+def fbduk_url_builder(base_url: str, league: League, season: str):
+
+    league_id = league.fbduk_id
+    season = season[2:-2].replace("-", "")
+
+    return f"{base_url}/{season}/{league_id}.csv"
+
+
+def get_fbref_data(url: str, league_name: str, season: str, dir: str):
     """
     Fetches and processes football match data from the given FBref URL.
     """
@@ -34,6 +52,8 @@ def get_fbref_data(url: str, league_name: str, season: str, dir: str) -> pd.Data
     columns = ["Wk", "Day", "Date", "Time", "Home", "Score", "Away"]
 
     data_df = pd.read_html(response.content)[0]
+
+    # data_df["Wk"] = data_df["Wk"].astype(int)
 
     unplayed_fixtures_df = (
         data_df[data_df["Score"].isna()][columns]
@@ -56,10 +76,31 @@ def get_fbref_data(url: str, league_name: str, season: str, dir: str) -> pd.Data
     )
     played_fixtures_df = played_fixtures_df.drop("Score", axis="columns")
 
-    played_fixtures_filename = f"{league_name}_{season}.csv"
-    played_fixtures_df.to_csv(f"{dir}/{played_fixtures_filename}", index=False)
-    print(f"File '{played_fixtures_filename}' downloaded and saved to '{dir}'")
+    write_files(played_fixtures_df, dir, league_name, season)
+    write_files(unplayed_fixtures_df, dir, league_name, season, prefix="unplayed_")
 
-    unplayed_fixtures_filename = f"unplayed_{league_name}_{season}.csv"
-    unplayed_fixtures_df.to_csv(f"{dir}/{unplayed_fixtures_filename}", index=False)
-    print(f"File '{unplayed_fixtures_filename}' downloaded and saved to '{dir}'")
+
+def get_fbduk_data(url: str, league_name: str, season: str, dir: str):
+
+    data_df = pd.read_csv(url)[
+        [
+            "Date",
+            "Time",
+            "HomeTeam",
+            "AwayTeam",
+            "B365CH",
+            "B365CD",
+            "B365CA",
+            "PSCH",
+            "PSCD",
+            "PSCA",
+        ]
+    ]
+
+    data_df = data_df.rename(columns={"HomeTeam": "Home", "AwayTeam": "Away"})
+
+    data_df["Date"] = pd.to_datetime(data_df["Date"], format="%d/%m/%Y").dt.strftime(
+        "%Y-%m-%d"
+    )
+
+    write_files(data_df, dir, league_name, season)

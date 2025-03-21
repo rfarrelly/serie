@@ -1,20 +1,19 @@
 import pandas as pd
 from pathlib import Path
 
-# Translate team names
-team_dict = pd.read_csv("team_dict.csv")
+TEAM_DICT = pd.read_csv("team_dict.csv")
 
 
 def standardise_team_names(row):
-    if row["Home"] in team_dict["fbduk"].to_list():
-        row["Home"] = team_dict.loc[team_dict["fbduk"] == row["Home"]]["fbref"].values[
+    if row["Home"] in TEAM_DICT["fbduk"].to_list():
+        row["Home"] = TEAM_DICT.loc[TEAM_DICT["fbduk"] == row["Home"]]["fbref"].values[
             0
         ]
     else:
         print(f"{row["Home"]} is missing")
 
-    if row["Away"] in team_dict["fbduk"].to_list():
-        row["Away"] = team_dict.loc[team_dict["fbduk"] == row["Away"]]["fbref"].values[
+    if row["Away"] in TEAM_DICT["fbduk"].to_list():
+        row["Away"] = TEAM_DICT.loc[TEAM_DICT["fbduk"] == row["Away"]]["fbref"].values[
             0
         ]
     else:
@@ -32,30 +31,9 @@ def merge_fbduk_odds():
 
     df_list = []
     for file in fbduk_files:
-        df_list.append(
-            pd.read_csv(file)[
-                [
-                    "Date",
-                    "Time",
-                    "HomeTeam",
-                    "AwayTeam",
-                    "B365CH",
-                    "B365CD",
-                    "B365CA",
-                    "PSCH",
-                    "PSCD",
-                    "PSCA",
-                ]
-            ]
-        )
+        df_list.append(pd.read_csv(file))
 
-    fbduk_all = pd.concat(df_list).rename(
-        columns={"HomeTeam": "Home", "AwayTeam": "Away"}
-    )
-
-    fbduk_all["Date"] = pd.to_datetime(
-        fbduk_all["Date"], format="%d/%m/%Y"
-    ).dt.strftime("%Y-%m-%d")
+    fbduk_all = pd.concat(df_list)
 
     print(f"FBDUK number of mathes: {fbduk_all.shape[0]}")
     print(f"FBREF number of mathes: {fbref_df.shape[0]}")

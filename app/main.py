@@ -6,11 +6,13 @@ from pathlib import Path
 
 import config, ingestion, plotting
 
-BASE_URL = "https://fbref.com/en/comps"
-LEAGUE_CONFIG = config.League.ENL
+FBREF_BASE_URL = "https://fbref.com/en/comps"
+FBDUK_BASE_URL = "https://www.football-data.co.uk/mmz4281"
+LEAGUE_CONFIG = config.League.EPL
 LEAGUE_NAME = LEAGUE_CONFIG.fbref_name
 SEASON = "2024-2025"
-DATA_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
+FBREF_DATA_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
+FBDUK_DATA_DIRECTORY = f"./DATA/FBDUK/{LEAGUE_NAME}"
 HISTORICAL_DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
 FUTURE_FIXTURES_FILE_NAME = f"unplayed_{LEAGUE_NAME}_{SEASON}.csv"
 RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
@@ -20,15 +22,31 @@ WINDOW = 1
 RPI_DIFF_THRESHOLD = 0.1
 
 
-def get_data(save_path: str, season: str = "current"):
-    os.makedirs(save_path, exist_ok=True)
+def get_data(season: str = "current"):
+
+    os.makedirs(FBREF_DATA_DIRECTORY, exist_ok=True)
+
     ingestion.get_fbref_data(
         url=ingestion.fbref_url_builder(
-            base_url=BASE_URL, league=LEAGUE_CONFIG, season=season
+            base_url=FBREF_BASE_URL, league=LEAGUE_CONFIG, season=season
         ),
         league_name=LEAGUE_NAME,
-        season=SEASON,
-        dir=DATA_DIRECTORY,
+        season=season,
+        dir=FBREF_DATA_DIRECTORY,
+    )
+
+    os.makedirs(FBDUK_DATA_DIRECTORY, exist_ok=True)
+
+    if season == "current":
+        season = SEASON
+
+    ingestion.get_fbduk_data(
+        url=ingestion.fbduk_url_builder(
+            base_url=FBDUK_BASE_URL, league=LEAGUE_CONFIG, season=season
+        ),
+        league_name=LEAGUE_NAME,
+        season=season,
+        dir=FBDUK_DATA_DIRECTORY,
     )
 
 
@@ -126,11 +144,11 @@ def analyse_historical_data():
 def compute_rpi_and_generate_plots():
 
     historical_data_df = pd.read_csv(
-        f"{DATA_DIRECTORY}/{HISTORICAL_DATA_FILE_NAME}", dtype={"Wk": int}
+        f"{FBREF_DATA_DIRECTORY}/{HISTORICAL_DATA_FILE_NAME}", dtype={"Wk": int}
     )
 
     future_fixtures_df = pd.read_csv(
-        f"{DATA_DIRECTORY}/{FUTURE_FIXTURES_FILE_NAME}", dtype={"Wk": int}
+        f"{FBREF_DATA_DIRECTORY}/{FUTURE_FIXTURES_FILE_NAME}", dtype={"Wk": int}
     )
 
     fixtures = future_fixtures_df[future_fixtures_df["Wk"].isin(WEEKS)]
@@ -224,7 +242,7 @@ def compute_rpi_and_generate_plots():
 
 if __name__ == "__main__":
 
-    # get_data(save_path=DATA_DIRECTORY)
+    get_data(season="2024-2025")
     # compute_rpi_and_generate_plots()
-    process_historical_data()
+    # process_historical_data()
     # analyse_historical_data()
