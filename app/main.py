@@ -8,7 +8,7 @@ import config, ingestion, plotting
 
 FBREF_BASE_URL = "https://fbref.com/en/comps"
 FBDUK_BASE_URL = "https://www.football-data.co.uk/mmz4281"
-LEAGUE_CONFIG = config.League.EPL
+LEAGUE_CONFIG = config.League.SP2
 LEAGUE_NAME = LEAGUE_CONFIG.fbref_name
 SEASON = "2024-2025"
 FBREF_DATA_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
@@ -17,7 +17,7 @@ HISTORICAL_DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
 FUTURE_FIXTURES_FILE_NAME = f"unplayed_{LEAGUE_NAME}_{SEASON}.csv"
 RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
 PPG_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/ppg"
-WEEKS = [30]
+WEEKS = [32]
 WINDOW = 1
 RPI_DIFF_THRESHOLD = 0.1
 
@@ -242,6 +242,6 @@ def compute_rpi_and_generate_plots():
 if __name__ == "__main__":
 
     get_data()
-    # compute_rpi_and_generate_plots()
+    compute_rpi_and_generate_plots()
     # process_historical_data()
     # analyse_historical_data()
