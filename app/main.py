@@ -116,6 +116,7 @@ def process_historical_data():
             all_teams_stats = {team: stats.TeamStats(team, df) for team in teams}
 
             rpi_df_dict = {}
+
             for fixture in df.itertuples(index=False):
                 week, date, home_team, away_team, fthg, ftag = (
                     fixture.Wk,
@@ -133,6 +134,9 @@ def process_historical_data():
                         target_team_stats=all_teams_stats[home_team],
                         all_teams_stats=all_teams_stats,
                     )
+                    home_rpi_df["RPI"] = home_rpi_df["RPI"].shift(
+                        periods=1, fill_value=0
+                    )
                     rpi_df_dict[home_team] = home_rpi_df
 
                 if away_team in rpi_df_dict.keys():
@@ -142,11 +146,10 @@ def process_historical_data():
                         target_team_stats=all_teams_stats[away_team],
                         all_teams_stats=all_teams_stats,
                     )
+                    away_rpi_df["RPI"] = away_rpi_df["RPI"].shift(
+                        periods=1, fill_value=0
+                    )
                     rpi_df_dict[away_team] = away_rpi_df
-
-                # Shit RPi forward one to the value before the matches were played
-                home_rpi_df["RPI"] = home_rpi_df["RPI"].shift(periods=1, fill_value=0)
-                away_rpi_df["RPI"] = away_rpi_df["RPI"].shift(periods=1, fill_value=0)
 
                 # "Team" is the opposition team in these dataframes
                 match_home = home_rpi_df[
