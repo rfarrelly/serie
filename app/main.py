@@ -115,6 +115,7 @@ def process_historical_data():
 
             all_teams_stats = {team: stats.TeamStats(team, df) for team in teams}
 
+            rpi_df_dict = {}
             for fixture in df.itertuples(index=False):
                 week, date, home_team, away_team, fthg, ftag = (
                     fixture.Wk,
@@ -125,15 +126,23 @@ def process_historical_data():
                     fixture.FTAG,
                 )
 
-                home_rpi_df = stats.compute_rpi(
-                    target_team_stats=all_teams_stats[home_team],
-                    all_teams_stats=all_teams_stats,
-                )
+                if home_team in rpi_df_dict.keys():
+                    home_rpi_df = rpi_df_dict[home_team]
+                else:
+                    home_rpi_df = stats.compute_rpi(
+                        target_team_stats=all_teams_stats[home_team],
+                        all_teams_stats=all_teams_stats,
+                    )
+                    rpi_df_dict[home_team] = home_rpi_df
 
-                away_rpi_df = stats.compute_rpi(
-                    target_team_stats=all_teams_stats[away_team],
-                    all_teams_stats=all_teams_stats,
-                )
+                if away_team in rpi_df_dict.keys():
+                    away_rpi_df = rpi_df_dict[away_team]
+                else:
+                    away_rpi_df = stats.compute_rpi(
+                        target_team_stats=all_teams_stats[away_team],
+                        all_teams_stats=all_teams_stats,
+                    )
+                    rpi_df_dict[away_team] = away_rpi_df
 
                 # Shit RPi forward one to the value before the matches were played
                 home_rpi_df["RPI"] = home_rpi_df["RPI"].shift(periods=1, fill_value=0)
@@ -173,28 +182,28 @@ def process_historical_data():
 
 
 def main():
-    all_candidates = []
+    # all_candidates = []
 
-    for league in config.League:
-        league_weeks = LEAGUE_WEEKS.get(league, [])
-        processor = LeagueProcessor(league)
+    # for league in config.League:
+    #     league_weeks = LEAGUE_WEEKS.get(league, [])
+    #     processor = LeagueProcessor(league)
 
-        print(f"Processing {league.name} ({league.value['fbref_name']})")
+    #     print(f"Processing {league.name} ({league.value['fbref_name']})")
 
-        # Run this once per league
-        processor.get_data()
+    #     # Run this once per league
+    #     processor.get_data()
 
-        # Now compute RPI differences for upcoming fixtures
-        if league_weeks:
-            league_candidates = processor.compute_rpi_and_generate_plots(league_weeks)
-            if league_candidates:
-                all_candidates.extend(league_candidates)
+    #     # Now compute RPI differences for upcoming fixtures
+    #     if league_weeks:
+    #         league_candidates = processor.compute_rpi_and_generate_plots(league_weeks)
+    #         if league_candidates:
+    #             all_candidates.extend(league_candidates)
 
-    if all_candidates:
-        candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
-        candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
-        candidates_df.to_csv("candidates.csv", index=False)
-        print("Saved sorted candidate matches to candidates.csv")
+    # if all_candidates:
+    #     candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
+    #     candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
+    #     candidates_df.to_csv("candidates.csv", index=False)
+    #     print("Saved sorted candidate matches to candidates.csv")
 
     process_historical_data().to_csv("historical.csv", index=False)
     print("Saved sorted historical matches to historical.csv")
