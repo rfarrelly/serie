@@ -8,45 +8,95 @@ import config, ingestion, plotting
 
 FBREF_BASE_URL = "https://fbref.com/en/comps"
 FBDUK_BASE_URL = "https://www.football-data.co.uk/mmz4281"
-LEAGUE_CONFIG = config.League.SP2
-LEAGUE_NAME = LEAGUE_CONFIG.fbref_name
 SEASON = "2024-2025"
-FBREF_DATA_DIRECTORY = f"./DATA/FBREF/{LEAGUE_NAME}"
-FBDUK_DATA_DIRECTORY = f"./DATA/FBDUK/{LEAGUE_NAME}"
-HISTORICAL_DATA_FILE_NAME = f"{LEAGUE_NAME}_{SEASON}.csv"
-FUTURE_FIXTURES_FILE_NAME = f"unplayed_{LEAGUE_NAME}_{SEASON}.csv"
-RPI_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/rpi"
-PPG_PLOTS_SAVE_DIRECORY = f"./PLOTS/{LEAGUE_NAME}_{SEASON}/ppg"
-WEEKS = [32]
 WINDOW = 1
 RPI_DIFF_THRESHOLD = 0.1
 
+# Define WEEKS for each league
+LEAGUE_WEEKS = {
+    config.League.EPL: [30],
+    config.League.ECH: [39],
+    config.League.EL1: [39],
+    config.League.EL2: [26, 39],
+    config.League.ENL: [27, 35],
+    config.League.SP2: [33],
+}
 
-def get_data(season: str = None):
 
-    os.makedirs(FBREF_DATA_DIRECTORY, exist_ok=True)
+class LeagueProcessor:
+    def __init__(self, league_config):
+        self.league_config = league_config
+        self.league_name = league_config.fbref_name
+        self.fbref_dir = Path(f"./DATA/FBREF/{self.league_name}")
+        self.fbduk_dir = Path(f"./DATA/FBDUK/{self.league_name}")
+        self.fbref_dir.mkdir(parents=True, exist_ok=True)
+        self.fbduk_dir.mkdir(parents=True, exist_ok=True)
 
-    ingestion.get_fbref_data(
-        url=ingestion.fbref_url_builder(
-            base_url=FBREF_BASE_URL, league=LEAGUE_CONFIG, season=season
-        ),
-        league_name=LEAGUE_NAME,
-        season=season if season else SEASON,
-        dir=FBREF_DATA_DIRECTORY,
-    )
+    def get_data(self):
+        """Fetch data for the given league."""
+        ingestion.get_fbref_data(
+            url=ingestion.fbref_url_builder(
+                base_url=FBREF_BASE_URL, league=self.league_config, season=SEASON
+            ),
+            league_name=self.league_name,
+            season=SEASON,
+            dir=self.fbref_dir,
+        )
 
-    os.makedirs(FBDUK_DATA_DIRECTORY, exist_ok=True)
+        ingestion.get_fbduk_data(
+            url=ingestion.fbduk_url_builder(
+                base_url=FBDUK_BASE_URL, league=self.league_config, season=SEASON
+            ),
+            league_name=self.league_name,
+            season=SEASON,
+            dir=self.fbduk_dir,
+        )
 
-    ingestion.get_fbduk_data(
-        url=ingestion.fbduk_url_builder(
-            base_url=FBDUK_BASE_URL,
-            league=LEAGUE_CONFIG,
-            season=season if season else SEASON,
-        ),
-        league_name=LEAGUE_NAME,
-        season=season if season else SEASON,
-        dir=FBDUK_DATA_DIRECTORY,
-    )
+    def compute_rpi_and_generate_plots(self, weeks):
+        """Compute RPI differences and generate plots."""
+        data_file = self.fbref_dir / f"{self.league_name}_{SEASON}.csv"
+        future_fixtures_file = (
+            self.fbref_dir / f"unplayed_{self.league_name}_{SEASON}.csv"
+        )
+
+        historical_df = pd.read_csv(data_file, dtype={"Wk": int})
+        future_fixtures_df = pd.read_csv(future_fixtures_file, dtype={"Wk": int})
+        fixtures = future_fixtures_df[future_fixtures_df["Wk"].isin(weeks)]
+        teams = set(historical_df["Home"]).union(historical_df["Away"])
+        all_teams_stats = {team: stats.TeamStats(team, historical_df) for team in teams}
+
+        candidates = []
+
+        for fixture in fixtures.itertuples(index=False):
+            week, date, home_team, away_team = (
+                fixture.Wk,
+                fixture.Date,
+                fixture.Home,
+                fixture.Away,
+            )
+            home_rpi_latest = stats.compute_rpi(
+                all_teams_stats[home_team], all_teams_stats
+            )["RPI"].iloc[-1]
+            away_rpi_latest = stats.compute_rpi(
+                all_teams_stats[away_team], all_teams_stats
+            )["RPI"].iloc[-1]
+            rpi_diff = round(abs(home_rpi_latest - away_rpi_latest), 2)
+
+            candidates.append(
+                {
+                    "Wk": week,
+                    "Date": date,
+                    "League": self.league_name,
+                    "Home": home_team,
+                    "Away": away_team,
+                    "hRPI": home_rpi_latest,
+                    "aRPI": away_rpi_latest,
+                    "RPI_Diff": rpi_diff,
+                }
+            )
+
+        candidates_df = pd.DataFrame(candidates)
+        return candidates_df.to_dict(orient="records")
 
 
 def process_historical_data():
@@ -58,20 +108,22 @@ def process_historical_data():
 
     for file in files:
         if "unplayed" not in file:
+            print(f"Processing {file}")
             df = pd.read_csv(file, dtype={"Wk": int}).sort_values("Date")
 
             teams = set(df["Home"]).union(df["Away"])
 
             all_teams_stats = {team: stats.TeamStats(team, df) for team in teams}
 
-            for fixture in df.values.tolist():
-
-                week = fixture[0]
-                date = fixture[2]
-                home_team = fixture[4]
-                away_team = fixture[5]
-                fthg = fixture[6]
-                ftag = fixture[7]
+            for fixture in df.itertuples(index=False):
+                week, date, home_team, away_team, fthg, ftag = (
+                    fixture.Wk,
+                    fixture.Date,
+                    fixture.Home,
+                    fixture.Away,
+                    fixture.FTHG,
+                    fixture.FTAG,
+                )
 
                 home_rpi_df = stats.compute_rpi(
                     target_team_stats=all_teams_stats[home_team],
@@ -117,131 +169,36 @@ def process_historical_data():
                 )
 
     # Short-list candidates to bet on
-    candidates_df = pd.DataFrame(candidates)
-
-    file_exists = os.path.exists("historical_candidates.csv")
-
-    candidates_df.to_csv(
-        "historical_candidates.csv", mode="a", header=not file_exists, index=False
-    )
-
-    candidates_df = (
-        pd.read_csv("historical_candidates.csv")
-        .sort_values("RPI_Diff")
-        .to_csv("historical_candidates.csv", index=False)
-    )
+    return pd.DataFrame(candidates)
 
 
-def analyse_historical_data():
-    data = pd.read_csv("historical_candidates.csv")
-    c1 = Counter(data["FTR"])
-    p1 = sum(c1.values())
-    c1p = [round((i / p1), 2) for i in list(c1.values())]
-    print(c1p, c1p[1] + c1p[2])
+def main():
+    all_candidates = []
 
+    for league in config.League:
+        league_weeks = LEAGUE_WEEKS.get(league, [])
+        processor = LeagueProcessor(league)
 
-def compute_rpi_and_generate_plots():
+        print(f"Processing {league.name} ({league.value['fbref_name']})")
 
-    historical_data_df = pd.read_csv(
-        f"{FBREF_DATA_DIRECTORY}/{HISTORICAL_DATA_FILE_NAME}", dtype={"Wk": int}
-    )
+        # Run this once per league
+        processor.get_data()
 
-    future_fixtures_df = pd.read_csv(
-        f"{FBREF_DATA_DIRECTORY}/{FUTURE_FIXTURES_FILE_NAME}", dtype={"Wk": int}
-    )
+        # Now compute RPI differences for upcoming fixtures
+        if league_weeks:
+            league_candidates = processor.compute_rpi_and_generate_plots(league_weeks)
+            if league_candidates:
+                all_candidates.extend(league_candidates)
 
-    fixtures = future_fixtures_df[future_fixtures_df["Wk"].isin(WEEKS)]
+    if all_candidates:
+        candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
+        candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
+        candidates_df.to_csv("candidates.csv", index=False)
+        print("Saved sorted candidate matches to candidates.csv")
 
-    teams = set(historical_data_df["Home"]).union(historical_data_df["Away"])
-
-    all_teams_stats = {
-        team: stats.TeamStats(team, historical_data_df) for team in teams
-    }
-
-    candidates = []
-
-    for fixture in fixtures.values.tolist():
-
-        week = fixture[0]
-        date = fixture[2]
-        home_team = fixture[4]
-        away_team = fixture[5]
-
-        home_rpi_df = stats.compute_rpi(
-            target_team_stats=all_teams_stats[home_team],
-            all_teams_stats=all_teams_stats,
-        )
-
-        away_rpi_df = stats.compute_rpi(
-            target_team_stats=all_teams_stats[away_team],
-            all_teams_stats=all_teams_stats,
-        )
-
-        # Get the latest non-NaN RPI values for each team
-        home_rpi_latest = home_rpi_df["RPI"][home_rpi_df["RPI"].last_valid_index()]
-        away_rpi_latest = away_rpi_df["RPI"][away_rpi_df["RPI"].last_valid_index()]
-
-        rpi_latest_diff = round(
-            max(home_rpi_latest, away_rpi_latest)
-            - min(home_rpi_latest, away_rpi_latest),
-            2,
-        )
-
-        candidates.append(
-            {
-                "Wk": week,
-                "Date": date,
-                "League": LEAGUE_NAME,
-                "Home": home_team,
-                "Away": away_team,
-                "hRPI": home_rpi_latest,
-                "aRPI": away_rpi_latest,
-                "RPI_Diff": rpi_latest_diff,
-            }
-        )
-
-        # RPI PLOTS
-        plotting.plot_compare_team_rolling_stats(
-            dataframes=[home_rpi_df, away_rpi_df],
-            teams=[home_team, away_team],
-            target_stat="RPI",
-            window=WINDOW,
-            show=False,
-            save_path=RPI_PLOTS_SAVE_DIRECORY,
-            filename=f"{home_team}_{away_team}.png",
-        )
-
-        # PPG PLOTS
-        plotting.plot_compare_team_rolling_stats(
-            dataframes=[home_rpi_df, away_rpi_df],
-            teams=[home_team, away_team],
-            target_stat="PPG",
-            window=WINDOW,
-            show=False,
-            save_path=PPG_PLOTS_SAVE_DIRECORY,
-            filename=f"{home_team}_{away_team}",
-        )
-
-    # Short-list candidates to bet on
-    candidates_df = pd.DataFrame(candidates)
-    candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
-
-    file_exists = os.path.exists("candidates.csv")
-
-    candidates_df.to_csv(
-        "candidates.csv", mode="a", header=not file_exists, index=False
-    )
-
-    candidates_df = (
-        pd.read_csv("candidates.csv")
-        .sort_values("RPI_Diff")
-        .to_csv("candidates.csv", index=False)
-    )
+    process_historical_data().to_csv("historical.csv", index=False)
+    print("Saved sorted historical matches to historical.csv")
 
 
 if __name__ == "__main__":
-
-    get_data()
-    compute_rpi_and_generate_plots()
-    # process_historical_data()
-    # analyse_historical_data()
+    main()

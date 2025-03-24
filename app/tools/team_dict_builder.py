@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import csv
+from itertools import chain
 
 
 def compile_team_names_from_files(data_directory: str) -> set[str]:
@@ -21,11 +22,12 @@ def compile_team_names_from_files(data_directory: str) -> set[str]:
 def find_partial_match(team, source_list):
     team_parts = team.split()
     for other_team in source_list:
-        if other_team.startswith(team_parts[0]):  # Check if first word matches
+        if other_team.startswith(team_parts[0]):
             return other_team
     return None
 
 
+team_dict = pd.read_csv("team_dict.csv")
 fbref_team_names = compile_team_names_from_files("DATA/FBREF")
 fbduk_team_names = compile_team_names_from_files("DATA/FBDUK")
 oddsportal_team_names = pd.read_csv("fixtures.csv")[["home", "away"]]
@@ -35,18 +37,21 @@ oddsportal_team_names = set(oddsportal_team_names["home"]).union(
 
 # Exact matches
 all_teams = fbref_team_names | fbduk_team_names | oddsportal_team_names
+
+dict_teams = list(chain(*team_dict.values.tolist()))
+unmatched_teams = {team: ("", "", "") for team in all_teams if team not in dict_teams}
+
 exact_matches = {
     team: (team, team, team)
-    for team in all_teams
+    for team in unmatched_teams
     if team in fbref_team_names
     and team in fbduk_team_names
     and team in oddsportal_team_names
 }
 
-unmatched_teams = {}
 team_mappings = {}
 
-for team in all_teams:
+for team in unmatched_teams.keys():
     if team in exact_matches:
         continue
 
@@ -69,12 +74,12 @@ for team in all_teams:
 
 # Print unmatched teams for manual checking
 if unmatched_teams:
+    breakpoint()
     print("Teams needing manual review:")
     for team, (fbref, fbduk, oddsportal) in unmatched_teams.items():
         print(
             f"Standard: {team} | FBREF: {fbref} | FBDUK: {fbduk} | OddsPortal: {oddsportal}"
         )
-
 
 fieldnames = ["standard_name", "fbref", "fbduk", "oddsportal"]
 
@@ -91,7 +96,7 @@ with open("unmatched_team_dict.csv", "w", newline="", encoding="utf-8") as f:
             }
         )
 
-with open("team_dict.csv", "w", newline="", encoding="utf-8") as f:
+with open("team_dict.csv", "a", newline="", encoding="utf-8") as f:
     writer = csv.DictWriter(f, fieldnames=fieldnames)
     writer.writeheader()
     for std_name, (fbref, fbduk, oddsportal) in team_mappings.items():
@@ -119,5 +124,5 @@ pd.read_csv("unmatched_team_dict.csv").sort_values("standard_name").to_csv(
 )
 
 pd.read_csv("team_dict.csv").drop_duplicates(
-    subset="oddsportal", keep="first"
+    subset=["standard_name", "fbref", "fbduk", "oddsportal"], keep="first"
 ).sort_values("standard_name").to_csv("team_dict.csv", index=False)

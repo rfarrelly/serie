@@ -27,7 +27,7 @@ def merge_fbduk_odds():
         str(file) for file in fbduk_data_path.rglob("*.csv") if file.is_file()
     ]
 
-    fbref_df = pd.read_csv("historical_candidates.csv")
+    fbref_df = pd.read_csv("historical.csv")
 
     df_list = []
     for file in fbduk_files:
