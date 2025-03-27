@@ -74,7 +74,6 @@ for team in unmatched_teams.keys():
 
 # Print unmatched teams for manual checking
 if unmatched_teams:
-    breakpoint()
     print("Teams needing manual review:")
     for team, (fbref, fbduk, oddsportal) in unmatched_teams.items():
         print(

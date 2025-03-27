@@ -12,7 +12,12 @@ wheels/
 # File System
 .DS_Store
 *.csv
+temp.py
+
 # Custom files and folders
 DATA
 HISTORICAL_DATA
 PLOTS
+
+# Don't ignore ...
+!team_dict.csv

@@ -188,31 +188,31 @@ def process_historical_data():
 
 
 def main():
-    all_candidates = []
+    # all_candidates = []
 
-    for league in config.League:
-        league_weeks = LEAGUE_WEEKS.get(league, [])
-        processor = LeagueProcessor(league)
+    # for league in config.League:
+    #     league_weeks = LEAGUE_WEEKS.get(league, [])
+    #     processor = LeagueProcessor(league)
 
-        print(f"Processing {league.name} ({league.value['fbref_name']})")
+    #     print(f"Processing {league.name} ({league.value['fbref_name']})")
 
-        # Run this once per league
-        processor.get_data()
+    #     # Run this once per league
+    #     processor.get_data()
 
-        # Now compute RPI differences for upcoming fixtures
-        if league_weeks:
-            league_candidates = processor.compute_league_rpi(league_weeks)
-            if league_candidates:
-                all_candidates.extend(league_candidates)
+    #     # Now compute RPI differences for upcoming fixtures
+    #     if league_weeks:
+    #         league_candidates = processor.compute_league_rpi(league_weeks)
+    #         if league_candidates:
+    #             all_candidates.extend(league_candidates)
 
-    if all_candidates:
-        candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
-        candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
-        candidates_df.to_csv("candidates.csv", index=False)
-        print("Saved sorted candidate matches to candidates.csv")
+    # if all_candidates:
+    #     candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
+    #     candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
+    #     candidates_df.to_csv("candidates.csv", index=False)
+    #     print("Saved sorted candidate matches to candidates.csv")
 
-    # process_historical_data().to_csv("historical.csv", index=False)
-    # print("Saved sorted historical matches to historical.csv")
+    process_historical_data().to_csv("historical.csv", index=False)
+    print("Saved sorted historical matches to historical.csv")
 
 
 if __name__ == "__main__":

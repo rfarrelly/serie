@@ -65,6 +65,8 @@ def merge_fbduk_odds():
 
     merged_df = merged_df[cols]
 
+    print(f"Number of mathes after odds merge: {merged_df.shape[0]}")
+
     merged_df.to_csv("hf_odds.csv", index=False)
 
 
