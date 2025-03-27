@@ -1,10 +1,8 @@
 import stats
-import os
 import pandas as pd
-from collections import Counter
 from pathlib import Path
 
-import config, ingestion, plotting
+import config, ingestion
 
 FBREF_BASE_URL = "https://fbref.com/en/comps"
 FBDUK_BASE_URL = "https://www.football-data.co.uk/mmz4281"
@@ -17,9 +15,14 @@ LEAGUE_WEEKS = {
     config.League.EPL: [30],
     config.League.ECH: [39],
     config.League.EL1: [39],
-    config.League.EL2: [26, 39],
-    config.League.ENL: [27, 35],
+    config.League.EL2: [39],
+    config.League.ENL: [40],
+    config.League.SP1: [27, 29],
     config.League.SP2: [33],
+    config.League.D1: [27],
+    config.League.D2: [27],
+    config.League.IT1: [30],
+    config.League.IT2: [31],
 }
 
 
@@ -52,7 +55,7 @@ class LeagueProcessor:
             dir=self.fbduk_dir,
         )
 
-    def compute_rpi_and_generate_plots(self, weeks):
+    def compute_league_rpi(self, weeks):
         """Compute RPI differences and generate plots."""
         data_file = self.fbref_dir / f"{self.league_name}_{SEASON}.csv"
         future_fixtures_file = (
@@ -185,31 +188,31 @@ def process_historical_data():
 
 
 def main():
-    # all_candidates = []
+    all_candidates = []
 
-    # for league in config.League:
-    #     league_weeks = LEAGUE_WEEKS.get(league, [])
-    #     processor = LeagueProcessor(league)
+    for league in config.League:
+        league_weeks = LEAGUE_WEEKS.get(league, [])
+        processor = LeagueProcessor(league)
 
-    #     print(f"Processing {league.name} ({league.value['fbref_name']})")
+        print(f"Processing {league.name} ({league.value['fbref_name']})")
 
-    #     # Run this once per league
-    #     processor.get_data()
+        # Run this once per league
+        processor.get_data()
 
-    #     # Now compute RPI differences for upcoming fixtures
-    #     if league_weeks:
-    #         league_candidates = processor.compute_rpi_and_generate_plots(league_weeks)
-    #         if league_candidates:
-    #             all_candidates.extend(league_candidates)
+        # Now compute RPI differences for upcoming fixtures
+        if league_weeks:
+            league_candidates = processor.compute_league_rpi(league_weeks)
+            if league_candidates:
+                all_candidates.extend(league_candidates)
 
-    # if all_candidates:
-    #     candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
-    #     candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
-    #     candidates_df.to_csv("candidates.csv", index=False)
-    #     print("Saved sorted candidate matches to candidates.csv")
+    if all_candidates:
+        candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
+        candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
+        candidates_df.to_csv("candidates.csv", index=False)
+        print("Saved sorted candidate matches to candidates.csv")
 
-    process_historical_data().to_csv("historical.csv", index=False)
-    print("Saved sorted historical matches to historical.csv")
+    # process_historical_data().to_csv("historical.csv", index=False)
+    # print("Saved sorted historical matches to historical.csv")
 
 
 if __name__ == "__main__":

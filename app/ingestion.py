@@ -17,11 +17,7 @@ def fbref_url_builder(base_url: str, league: League, season: str = None):
 
     league_name = league.fbref_name
     league_id = league.fbref_id
-
-    if season:
-        return f"{base_url}/{league_id}/{season}/schedule/{season}-{league_name}-Scores-and-Fixtures"
-
-    return f"{base_url}/{league_id}/schedule/{league_name}-Scores-and-Fixtures"
+    return f"{base_url}/{league_id}/{season}/schedule/{season}-{league_name}-Scores-and-Fixtures"
 
 
 def fbduk_url_builder(base_url: str, league: League, season: str):
