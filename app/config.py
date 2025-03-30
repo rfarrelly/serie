@@ -57,6 +57,11 @@ class League(Enum):
         "fbref_name": "Serie-B",
         "fbduk_id": "I2",
     }
+    FR1 = {
+        "fbref_id": 13,
+        "fbref_name": "Ligue-1",
+        "fbduk_id": "F1",
+    }
 
     @property
     def fbref_id(self):
