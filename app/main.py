@@ -13,17 +13,18 @@ RPI_DIFF_THRESHOLD = 0.1
 # Define WEEKS for each league
 LEAGUE_WEEKS = {
     config.League.EPL: [30],
-    config.League.ECH: [40],
+    config.League.ECH: [39, 40],
     config.League.EL1: [40],
     config.League.EL2: [40],
     config.League.ENL: [25, 30, 31],
-    config.League.SP1: [29],
-    config.League.SP2: [33],
-    config.League.D1: [27],
-    config.League.D2: [27],
-    config.League.IT1: [30],
-    config.League.IT2: [31],
-    config.League.FR1: [27],
+    config.League.SP1: [30],
+    config.League.SP2: [34],
+    config.League.D1: [28],
+    config.League.D2: [28],
+    config.League.IT1: [31],
+    config.League.IT2: [32],
+    config.League.FR1: [28],
+    config.League.FR2: [29],
 }
 
 
@@ -198,7 +199,7 @@ def main():
         print(f"Processing {league.name} ({league.value['fbref_name']})")
 
         # Run this once per league
-        processor.get_data()
+        # processor.get_data()
 
         # Now compute RPI differences for upcoming fixtures
         if league_weeks:
