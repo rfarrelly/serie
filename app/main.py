@@ -199,7 +199,7 @@ def main():
         print(f"Processing {league.name} ({league.value['fbref_name']})")
 
         # Run this once per league
-        # processor.get_data()
+        processor.get_data()
 
         # Now compute RPI differences for upcoming fixtures
         if league_weeks:

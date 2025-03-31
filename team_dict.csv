@@ -6,17 +6,22 @@ Albacete,Albacete,Albacete,Albacete
 Aldershot Town,Aldershot Town,Aldershot,Aldershot
 Almeria,Almería,Almeria,Almeria
 Altrincham,Altrincham,Altrincham,Altrincham
+Amiens,Amiens,Amiens,Amiens
+Angers,Angers,Angers,Angers
+Annecy,Annecy,Annecy,Annecy
 Arsenal,Arsenal,Arsenal,Arsenal
 Aston Villa,Aston Villa,Aston Villa,Aston Villa
 Atalanta,Atalanta,Atalanta,Atalanta
 Ath Bilbao,Athletic Club,Ath Bilbao,Ath Bilbao
 Ath Madrid,Atlético Madrid,Ath Madrid,Atl. Madrid
 Augsburg,Augsburg,Augsburg,Augsburg
+Auxerre,Auxerre,Auxerre,Auxerre
 Barcelona,Barcelona,Barcelona,Barcelona
 Bari,Bari,Bari,Bari
 Barnet,Barnet,Barnet,Barnet
 Barnsley,Barnsley,Barnsley,Barnsley
 Barrow,Barrow,Barrow,Barrow
+Bastia,Bastia,Bastia,Bastia
 Bayern Munich,Bayern Munich,Bayern Munich,Bayern Munich
 Betis,Betis,Betis,Betis
 Birmingham,Birmingham City,Birmingham,Birmingham
@@ -32,6 +37,7 @@ Braintree Town,Braintree Town,Braintree Town,Braintree
 Braunschweig,BTSV,Braunschweig,Braunschweig
 Brentford,Brentford,Brentford,Brentford
 Brescia,Brescia,Brescia,Brescia
+Brest,Brest,Brest,Brest
 Brighton,Brighton,Brighton,Brighton
 Bristol City,Bristol City,Bristol City,Bristol City
 Bristol Rovers,Bristol Rovers,Bristol Rvs,Bristol Rovers
@@ -41,6 +47,7 @@ Burnley,Burnley,Burnley,Burnley
 Burton,Burton Albion,Burton,Burton
 CD Mirandés,CD Mirandés,Mirandes,Mirandes
 Cadiz,Cádiz,Cadiz,Cadiz CF
+Caen,Caen,Caen,Caen
 Cagliari,Cagliari,Cagliari,Cagliari
 Cambridge Utd,Cambridge Utd,Cambridge,Cambridge Utd
 Cardiff,Cardiff City,Cardiff,Cardiff
@@ -56,6 +63,7 @@ Chelsea,Chelsea,Chelsea,Chelsea
 Cheltenham,Cheltenham,Cheltenham,Cheltenham
 Chesterfield,Chesterfield,Chesterfield,Chesterfield
 Cittadella,Cittadella,Cittadella,Cittadella
+Clermont,Clermont Foot,Clermont,Clermont
 Colchester,Colchester Utd,Colchester,Colchester
 Como,Como,Como,Como
 Cordoba,Córdoba,Cordoba,Cordoba
@@ -71,6 +79,7 @@ Dep. La Coruna,La Coruña,La Coruna,Dep. La Coruna
 Derby County,Derby County,Derby,Derby
 Doncaster,Doncaster,Doncaster,Doncaster
 Dortmund,Dortmund,Dortmund,Dortmund
+Dunkerque,Dunkerque,Dunkerque,Dunkerque
 Dusseldorf,Düsseldorf,Fortuna Dusseldorf,Dusseldorf
 Eastleigh,Eastleigh,Eastleigh,Eastleigh
 Ebbsfleet,Ebbsfleet Utd,Ebbsfleet,Ebbsfleet
@@ -100,8 +109,10 @@ Gillingham,Gillingham,Gillingham,Gillingham
 Girona,Girona,Girona,Girona
 Gladbach,Gladbach,M'gladbach,B. Monchengladbach
 Granada,Granada,Granada,Granada CF
+Grenoble,Grenoble,Grenoble,Grenoble
 Greuther Fürth,Greuther Fürth,Greuther Furth,Greuther Furth
 Grimsby,Grimsby Town,Grimsby,Grimsby
+Guingamp,Guingamp,Guingamp,Guingamp
 Hamburg,Hamburger SV,Hamburg,Hamburger SV
 Hannover,Hannover 96,Hannover,Hannover
 Harrogate,Harrogate,Harrogate,Harrogate
@@ -122,16 +133,21 @@ Karlsruhe,Karlsruher,Karlsruhe,Karlsruher SC
 Köln,Köln,FC Koln,FC Koln
 Las Palmas,Las Palmas,Las Palmas,Las Palmas
 Lazio,Lazio,Lazio,Lazio
+Le Havre,Le Havre,Le Havre,Le Havre
 Lecce,Lecce,Lecce,Lecce
 Leeds,Leeds United,Leeds,Leeds
 Leganes,Leganés,Leganes,Leganes
 Leicester City,Leicester City,Leicester,Leicester
+Lens,Lens,Lens,Lens
 Levante,Levante,Levante,Levante
 Leverkusen,Leverkusen,Leverkusen,Bayer Leverkusen
 Leyton Orient,Leyton Orient,Leyton Orient,Leyton Orient
+Lille,Lille,Lille,Lille
 Lincoln City,Lincoln City,Lincoln,Lincoln
 Liverpool,Liverpool,Liverpool,Liverpool
+Lorient,Lorient,Lorient,Lorient
 Luton,Luton Town,Luton,Luton
+Lyon,Lyon,Lyon,Lyon
 MK Dons,MK Dons,Milton Keynes Dons,MK Dons
 Magdeburg,Magdeburg,Magdeburg,Magdeburg
 Maidenhead,Maidenhead Utd,Maidenhead,Maidenhead
@@ -142,15 +158,22 @@ Manchester City,Manchester City,Man City,Manchester City
 Manchester Utd,Manchester Utd,Man United,Manchester Utd
 Mansfield Town,Mansfield Town,Mansfield,Mansfield
 Mantova,Mantova,Mantova,Mantova
+Marseille,Marseille,Marseille,Marseille
+Martigues,Martigues,Martigues,Martigues
+Metz,Metz,Metz,Metz
 Middlesbrough,Middlesbrough,Middlesbrough,Middlesbrough
 Milan,Milan,Milan,AC Milan
 Millwall,Millwall,Millwall,Millwall
 Modena,Modena,Modena,Modena
+Monaco,Monaco,Monaco,Monaco
+Montpellier,Montpellier,Montpellier,Montpellier
 Monza,Monza,Monza,Monza
 Morecambe,Morecambe,Morecambe,Morecambe
+Nantes,Nantes,Nantes,Nantes
 Napoli,Napoli,Napoli,Napoli
 Newcastle Utd,Newcastle Utd,Newcastle,Newcastle
 Newport County,Newport County,Newport County,Newport
+Nice,Nice,Nice,Nice
 Northampton,Northampton,Northampton,Northampton
 Norwich,Norwich City,Norwich,Norwich
 Nott'ham Forest,Nott'ham Forest,Nott'm Forest,Nottingham
@@ -163,7 +186,10 @@ Oxford,Oxford United,Oxford,Oxford Utd
 P'borough Utd,P'borough Utd,Peterboro,Peterborough
 Paderborn,Paderborn 07,Paderborn,Paderborn
 Palermo,Palermo,Palermo,Palermo
+Paris FC,Paris FC,Paris FC,Paris FC
+Paris SG,Paris S-G,Paris SG,PSG
 Parma,Parma,Parma,Parma
+Pau FC,Pau FC,Pau FC,Pau FC
 Pisa,Pisa,Pisa,Pisa
 Plymouth Argyle,Plymouth Argyle,Plymouth,Plymouth
 Port Vale,Port Vale,Port Vale,Port Vale
@@ -175,11 +201,16 @@ RB Leipzig,RB Leipzig,RB Leipzig,RB Leipzig
 Rayo Vallecano,Rayo Vallecano,Vallecano,Rayo Vallecano
 Reading,Reading,Reading,Reading
 Real Madrid,Real Madrid,Real Madrid,Real Madrid
+Red Star,Red Star,Red Star,Red Star
 Regensburg,Jahn R'burg,Regensburg,Regensburg
 Reggiana,Reggiana,Reggiana,Reggiana
+Reims,Reims,Reims,Reims
+Rennes,Rennes,Rennes,Rennes
 Rochdale,Rochdale,Rochdale,Rochdale
+Rodez,Rodez Aveyron,Rodez,Rodez
 Roma,Roma,Roma,AS Roma
 Rotherham Utd,Rotherham Utd,Rotherham,Rotherham
+Saint-Étienne,Saint-Étienne,St Etienne,St Etienne
 Salernitana,Salernitana,Salernitana,Salernitana
 Salford,Salford City,Salford,Salford
 Sampdoria,Sampdoria,Sampdoria,Sampdoria
@@ -199,6 +230,7 @@ St. Pauli,St. Pauli,St Pauli,St. Pauli
 Stevenage,Stevenage,Stevenage,Stevenage
 Stockport County,Stockport,Stockport,Stockport County
 Stoke,Stoke City,Stoke,Stoke
+Strasbourg,Strasbourg,Strasbourg,Strasbourg
 Stuttgart,Stuttgart,Stuttgart,Stuttgart
 Sudtirol,Südtirol,Sudtirol,Sudtirol
 Sunderland,Sunderland,Sunderland,Sunderland
@@ -209,7 +241,9 @@ Tamworth,Tamworth,Tamworth,Tamworth
 Tenerife,Tenerife,Tenerife,Tenerife
 Torino,Torino,Torino,Torino
 Tottenham,Tottenham,Tottenham,Tottenham
+Toulouse,Toulouse,Toulouse,Toulouse
 Tranmere Rovers,Tranmere Rovers,Tranmere,Tranmere
+Troyes,Troyes,Troyes,Troyes
 Udinese,Udinese,Udinese,Udinese
 Ulm,Ulm,Ulm,Ulm
 Union Berlin,Union Berlin,Union Berlin,Union Berlin
@@ -233,21 +267,5 @@ Wycombe,Wycombe,Wycombe,Wycombe
 Yeovil,Yeovil Town,Yeovil,Yeovil
 York City,York City,York,York City
 Zaragoza,Zaragoza,Zaragoza,Zaragoza
-Angers,Angers,Angers,Angers
-Auxerre,Auxerre,Auxerre,Auxerre
-Brest,Brest,Brest,Brest
-Le Havre,Le Havre,Le Havre,Le Havre
-Lens,Lens,Lens,Lens
-Lille,Lille,Lille,Lille
-Lyon,Lyon,Lyon,Lyon
-Marseille,Marseille,Marseille,Marseille
-Monaco,Monaco,Monaco,Monaco
-Montpellier,Montpellier,Montpellier,Montpellier
-Nantes,Nantes,Nantes,Nantes
-Nice,Nice,Nice,Nice
-Paris SG,Paris S-G,Paris SG,PSG
-Reims,Reims,Reims,Reims
-Rennes,Rennes,Rennes,Rennes
-Saint-Étienne,Saint-Étienne,St Etienne,St Etienne
-Strasbourg,Strasbourg,Strasbourg,Strasbourg
-Toulouse,Toulouse,Toulouse,Toulouse
+Ajaccio,Ajaccio,Ajaccio,AC Ajaccio
+Laval,Stade Laval,Laval,Laval
