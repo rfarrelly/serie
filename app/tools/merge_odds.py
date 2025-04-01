@@ -40,7 +40,9 @@ def merge_fbduk_odds():
 
     fbduk_all = fbduk_all.apply(standardise_team_names, axis="columns")
 
-    merged_df = fbref_df.merge(fbduk_all, on=["Date", "Home", "Away"])
+    merged_df = fbref_df.merge(
+        fbduk_all, on=["Date", "Home", "Away"], how="outer", indicator=True
+    )
 
     cols = [
         "Wk",
@@ -61,11 +63,17 @@ def merge_fbduk_odds():
         "PSCH",
         "PSCD",
         "PSCA",
+        "_merge",
     ]
 
     merged_df = merged_df[cols]
 
+    unmatched_fbref = merged_df[merged_df["_merge"] == "left_only"]
+    unmatched_fbduk = merged_df[merged_df["_merge"] == "right_only"]
+
     print(f"Number of matches after odds merge: {merged_df.shape[0]}")
+    print(f"UNMATCHED FBREF: {unmatched_fbref}")
+    print(f"UNMATCHED FBDUK: {unmatched_fbduk}")
 
     merged_df.to_csv("hf_odds.csv", index=False)
 

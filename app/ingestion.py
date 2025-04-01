@@ -49,7 +49,7 @@ def get_fbref_data(url: str, league_name: str, season: str, dir: str):
 
     data_df = pd.read_html(response.content)[0]
 
-    # data_df["Wk"] = data_df["Wk"].astype(int)
+    data_df = data_df[data_df["Notes"] != "Match Suspended"]
 
     unplayed_fixtures_df = (
         data_df[data_df["Score"].isna()][columns]
