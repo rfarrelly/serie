@@ -12,11 +12,11 @@ RPI_DIFF_THRESHOLD = 0.1
 
 # Define WEEKS for each league
 LEAGUE_WEEKS = {
-    config.League.EPL: [30],
-    config.League.ECH: [39, 40],
-    config.League.EL1: [40],
-    config.League.EL2: [40],
-    config.League.ENL: [25, 30, 31],
+    config.League.EPL: [31],
+    config.League.ECH: [40],
+    config.League.EL1: [41],
+    config.League.EL2: [41],
+    config.League.ENL: [41],
     config.League.SP1: [30],
     config.League.SP2: [34],
     config.League.D1: [28],
@@ -73,9 +73,10 @@ class LeagueProcessor:
         candidates = []
 
         for fixture in fixtures.itertuples(index=False):
-            week, date, home_team, away_team = (
+            week, date, time, home_team, away_team = (
                 fixture.Wk,
                 fixture.Date,
+                fixture.Time,
                 fixture.Home,
                 fixture.Away,
             )
@@ -91,6 +92,7 @@ class LeagueProcessor:
                 {
                     "Wk": week,
                     "Date": date,
+                    "Time": time,
                     "League": self.league_name,
                     "Home": home_team,
                     "Away": away_team,
@@ -199,7 +201,7 @@ def main():
         print(f"Processing {league.name} ({league.value['fbref_name']})")
 
         # Run this once per league
-        processor.get_data()
+        # processor.get_data()
 
         # Now compute RPI differences for upcoming fixtures
         if league_weeks:
@@ -213,8 +215,8 @@ def main():
         candidates_df.to_csv("candidates.csv", index=False)
         print("Saved sorted candidate matches to candidates.csv")
 
-    process_historical_data().to_csv("historical.csv", index=False)
-    print("Saved sorted historical matches to historical.csv")
+    # process_historical_data().to_csv("historical.csv", index=False)
+    # print("Saved sorted historical matches to historical.csv")
 
 
 if __name__ == "__main__":
