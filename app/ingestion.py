@@ -78,7 +78,7 @@ def get_fbref_data(url: str, league_name: str, season: str, dir: str):
 
 def get_fbduk_data(url: str, league_name: str, season: str, dir: str):
 
-    data_df = pd.read_csv(url)[
+    data_df = pd.read_csv(url, encoding="latin-1")[
         [
             "Date",
             "Time",
