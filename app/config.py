@@ -1,7 +1,10 @@
 from enum import Enum
+import os
+from pathlib import Path
+from dataclasses import dataclass
 
 
-class League(Enum):
+class Leagues(Enum):
     EPL = {
         "fbref_id": 9,
         "fbref_name": "Premier-League",
@@ -79,3 +82,58 @@ class League(Enum):
     @property
     def fbduk_id(self):
         return self.value["fbduk_id"]
+
+
+@dataclass
+class AppConfig:
+    fbref_base_url: str = os.getenv("FBREF_BASE_URL")
+    fbduk_base_url: str = os.getenv("FBDUK_BASE_URL")
+    current_season: str = os.getenv("CURRENT_SEASON")
+    rpi_diff_threshold: float = float(os.getenv("RPI_DIFF_THRESHOLD"))
+    data_dir: Path = Path(os.getenv("DATA_DIR"))
+
+    @property
+    def fbref_data_dir(self):
+        return self.data_dir / "FBREF"
+
+    @property
+    def fbduk_data_dir(self):
+        return self.data_dir / "FBDUK"
+
+    def get_fbref_league_dir(self, league_name):
+        path = self.fbref_data_dir / league_name
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def get_fbduk_league_dir(self, league_name):
+        path = self.fbduk_data_dir / league_name
+        path.mkdir(parents=True, exist_ok=True)
+        return path
+
+
+# Function to parse comma-separated weeks into a list of integers
+def parse_weeks(env_var, default=None):
+    if env_var and env_var.strip():
+        return [int(week) for week in env_var.split(",")]
+    return default or []
+
+
+# League weeks configuration loaded from environment
+LEAGUE_WEEKS = {
+    Leagues.EPL: parse_weeks(os.getenv("EPL_WEEKS"), []),
+    Leagues.ECH: parse_weeks(os.getenv("ECH_WEEKS"), []),
+    Leagues.EL1: parse_weeks(os.getenv("EL1_WEEKS"), []),
+    Leagues.EL2: parse_weeks(os.getenv("EL2_WEEKS"), []),
+    Leagues.ENL: parse_weeks(os.getenv("ENL_WEEKS"), []),
+    Leagues.SP1: parse_weeks(os.getenv("SP1_WEEKS"), []),
+    Leagues.SP2: parse_weeks(os.getenv("SP2_WEEKS"), []),
+    Leagues.D1: parse_weeks(os.getenv("D1_WEEKS"), []),
+    Leagues.D2: parse_weeks(os.getenv("D2_WEEKS"), []),
+    Leagues.IT1: parse_weeks(os.getenv("IT1_WEEKS"), []),
+    Leagues.IT2: parse_weeks(os.getenv("IT2_WEEKS"), []),
+    Leagues.FR1: parse_weeks(os.getenv("FR1_WEEKS"), []),
+    Leagues.FR2: parse_weeks(os.getenv("FR2_WEEKS"), []),
+}
+
+# Default app configuration
+DEFAULT_CONFIG = AppConfig()

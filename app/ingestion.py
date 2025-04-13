@@ -1,6 +1,6 @@
 import pandas as pd
 from curl_cffi import requests
-from config import League
+from config import Leagues
 
 
 def write_files(
@@ -13,14 +13,14 @@ def write_files(
     print(f"File '{filename}' downloaded and saved to '{dir}'")
 
 
-def fbref_url_builder(base_url: str, league: League, season: str = None):
+def fbref_url_builder(base_url: str, league: Leagues, season: str = None):
 
     league_name = league.fbref_name
     league_id = league.fbref_id
     return f"{base_url}/{league_id}/{season}/schedule/{season}-{league_name}-Scores-and-Fixtures"
 
 
-def fbduk_url_builder(base_url: str, league: League, season: str):
+def fbduk_url_builder(base_url: str, league: Leagues, season: str):
 
     league_id = league.fbduk_id
     season = season[2:-2].replace("-", "")

@@ -1,67 +1,47 @@
 import stats
 import pandas as pd
-from pathlib import Path
-
-import config, ingestion
-
-FBREF_BASE_URL = "https://fbref.com/en/comps"
-FBDUK_BASE_URL = "https://www.football-data.co.uk/mmz4281"
-SEASON = "2024-2025"
-WINDOW = 1
-RPI_DIFF_THRESHOLD = 0.1
-
-# Define WEEKS for each league
-LEAGUE_WEEKS = {
-    config.League.EPL: [32],
-    config.League.ECH: [41],
-    config.League.EL1: [31, 38],
-    config.League.EL2: [25],
-    config.League.ENL: [35, 41],
-    config.League.SP1: [31],
-    config.League.SP2: [35],
-    config.League.D1: [29],
-    config.League.D2: [29],
-    config.League.IT1: [32],
-    config.League.IT2: [33],
-    config.League.FR1: [29],
-    config.League.FR2: [30],
-}
+import ingestion
+from config import Leagues, AppConfig, LEAGUE_WEEKS, DEFAULT_CONFIG
 
 
 class LeagueProcessor:
-    def __init__(self, league_config):
-        self.league_config = league_config
-        self.league_name = league_config.fbref_name
-        self.fbref_dir = Path(f"./DATA/FBREF/{self.league_name}")
-        self.fbduk_dir = Path(f"./DATA/FBDUK/{self.league_name}")
-        self.fbref_dir.mkdir(parents=True, exist_ok=True)
-        self.fbduk_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, league: Leagues, config: AppConfig):
+        self.league = league
+        self.config = config
+        self.league_name = league.fbref_name
+        self.fbref_dir = config.get_fbref_league_dir(self.league_name)
+        self.fbduk_dir = config.get_fbduk_league_dir(self.league_name)
 
     def get_data(self):
-        """Fetch data for the given league."""
         ingestion.get_fbref_data(
             url=ingestion.fbref_url_builder(
-                base_url=FBREF_BASE_URL, league=self.league_config, season=SEASON
+                base_url=self.config.fbref_base_url,
+                league=self.league,
+                season=self.config.current_season,
             ),
             league_name=self.league_name,
-            season=SEASON,
+            season=self.config.current_season,
             dir=self.fbref_dir,
         )
 
         ingestion.get_fbduk_data(
             url=ingestion.fbduk_url_builder(
-                base_url=FBDUK_BASE_URL, league=self.league_config, season=SEASON
+                base_url=self.config.fbduk_base_url,
+                league=self.league,
+                season=self.config.current_season,
             ),
             league_name=self.league_name,
-            season=SEASON,
+            season=self.config.current_season,
             dir=self.fbduk_dir,
         )
 
     def compute_league_rpi(self, weeks):
-        """Compute RPI differences and generate plots."""
-        data_file = self.fbref_dir / f"{self.league_name}_{SEASON}.csv"
+        data_file = (
+            self.fbref_dir / f"{self.league_name}_{self.config.current_season}.csv"
+        )
         future_fixtures_file = (
-            self.fbref_dir / f"unplayed_{self.league_name}_{SEASON}.csv"
+            self.fbref_dir
+            / f"unplayed_{self.league_name}_{self.config.current_season}.csv"
         )
 
         historical_df = pd.read_csv(data_file, dtype={"Wk": int})
@@ -106,9 +86,8 @@ class LeagueProcessor:
         return candidates_df.to_dict(orient="records")
 
 
-def process_historical_data():
-
-    folder_path = Path("DATA/FBREF")
+def process_historical_data(config: AppConfig):
+    folder_path = config.fbref_data_dir
     files = [str(file) for file in folder_path.rglob("*.csv") if file.is_file()]
 
     candidates = []
@@ -194,9 +173,9 @@ def process_historical_data():
 def main():
     all_candidates = []
 
-    for league in config.League:
-        league_weeks = LEAGUE_WEEKS.get(league, [])
-        processor = LeagueProcessor(league)
+    for league in Leagues:
+        league_weeks = LEAGUE_WEEKS.get(league)
+        processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
         print(f"Processing {league.name} ({league.value['fbref_name']})")
 
@@ -211,11 +190,13 @@ def main():
 
     if all_candidates:
         candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
-        candidates_df = candidates_df[candidates_df["RPI_Diff"] <= RPI_DIFF_THRESHOLD]
+        candidates_df = candidates_df[
+            candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
+        ]
         candidates_df.to_csv("candidates.csv", index=False)
         print("Saved sorted candidate matches to candidates.csv")
 
-    process_historical_data().to_csv("historical.csv", index=False)
+    process_historical_data(DEFAULT_CONFIG).to_csv("historical.csv", index=False)
     print("Saved sorted historical matches to historical.csv")
 
 
