@@ -1,7 +1,22 @@
 import stats
 import pandas as pd
 import ingestion
-from config import Leagues, AppConfig, LEAGUE_WEEKS, DEFAULT_CONFIG
+from config import Leagues, AppConfig, LEAGUE_WEEKS, DEFAULT_CONFIG, TIME_DELTA
+from datetime import datetime, timedelta
+
+TODAY = datetime.now().date()
+
+
+def filter_date_range(df, date_column):
+    end_date = TODAY + timedelta(days=TIME_DELTA)
+
+    df[date_column] = pd.to_datetime(df[date_column])
+
+    filtered_df = df[
+        (df[date_column].dt.date >= TODAY) & (df[date_column].dt.date <= end_date)
+    ]
+
+    return filtered_df
 
 
 class LeagueProcessor:
@@ -35,7 +50,12 @@ class LeagueProcessor:
             dir=self.fbduk_dir,
         )
 
-    def compute_league_rpi(self, weeks):
+    def compute_league_rpi(self, weeks, days_ahead=None, weeks_ahead=None):
+        if days_ahead is not None and weeks_ahead is not None:
+            raise ValueError("Specify either days_ahead OR weeks_ahead, not both")
+        if days_ahead is None and weeks_ahead is None:
+            raise ValueError("Must specify either days_ahead OR weeks_ahead")
+
         data_file = (
             self.fbref_dir / f"{self.league_name}_{self.config.current_season}.csv"
         )
@@ -46,7 +66,12 @@ class LeagueProcessor:
 
         historical_df = pd.read_csv(data_file, dtype={"Wk": int})
         future_fixtures_df = pd.read_csv(future_fixtures_file, dtype={"Wk": int})
-        fixtures = future_fixtures_df[future_fixtures_df["Wk"].isin(weeks)]
+
+        if weeks_ahead:
+            fixtures = future_fixtures_df[future_fixtures_df["Wk"].isin(weeks)]
+        elif days_ahead:
+            fixtures = filter_date_range(future_fixtures_df, "Date")
+
         teams = set(historical_df["Home"]).union(historical_df["Away"])
         all_teams_stats = {team: stats.TeamStats(team, historical_df) for team in teams}
 
@@ -184,7 +209,9 @@ def main():
 
         # Now compute RPI differences for upcoming fixtures
         if league_weeks:
-            league_candidates = processor.compute_league_rpi(league_weeks)
+            league_candidates = processor.compute_league_rpi(
+                league_weeks, days_ahead=True
+            )
             if league_candidates:
                 all_candidates.extend(league_candidates)
 

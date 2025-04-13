@@ -2,6 +2,9 @@ from enum import Enum
 import os
 from pathlib import Path
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class Leagues(Enum):
@@ -134,6 +137,8 @@ LEAGUE_WEEKS = {
     Leagues.FR1: parse_weeks(os.getenv("FR1_WEEKS"), []),
     Leagues.FR2: parse_weeks(os.getenv("FR2_WEEKS"), []),
 }
+
+TIME_DELTA = int(os.getenv("TIME_DELTA"))
 
 # Default app configuration
 DEFAULT_CONFIG = AppConfig()
