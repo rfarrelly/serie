@@ -20,14 +20,6 @@ def fbref_url_builder(base_url: str, league: Leagues, season: str = None):
     return f"{base_url}/{league_id}/{season}/schedule/{season}-{league_name}-Scores-and-Fixtures"
 
 
-def fbduk_url_builder(base_url: str, league: Leagues, season: str):
-
-    league_id = league.fbduk_id
-    season = season[2:-2].replace("-", "")
-
-    return f"{base_url}/{season}/{league_id}.csv"
-
-
 def get_fbref_data(url: str, league_name: str, season: str, dir: str):
     """
     Fetches and processes football match data from the given FBref URL.
@@ -74,29 +66,3 @@ def get_fbref_data(url: str, league_name: str, season: str, dir: str):
 
     write_files(played_fixtures_df, dir, league_name, season)
     write_files(unplayed_fixtures_df, dir, league_name, season, prefix="unplayed_")
-
-
-def get_fbduk_data(url: str, league_name: str, season: str, dir: str):
-
-    data_df = pd.read_csv(url, encoding="latin-1")[
-        [
-            "Date",
-            "Time",
-            "HomeTeam",
-            "AwayTeam",
-            "B365CH",
-            "B365CD",
-            "B365CA",
-            "PSCH",
-            "PSCD",
-            "PSCA",
-        ]
-    ]
-
-    data_df = data_df.rename(columns={"HomeTeam": "Home", "AwayTeam": "Away"})
-
-    data_df["Date"] = pd.to_datetime(data_df["Date"], format="%d/%m/%Y").dt.strftime(
-        "%Y-%m-%d"
-    )
-
-    write_files(data_df, dir, league_name, season)
