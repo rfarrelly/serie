@@ -60,6 +60,26 @@ class Leagues(Enum):
         "fbref_id": 60,
         "fbref_name": "Ligue-2",
     }
+    POR = {
+        "fbref_id": 32,
+        "fbref_name": "Primeira-Liga",
+    }
+    BEL = {
+        "fbref_id": 37,
+        "fbref_name": "Belgian-Pro-League",
+    }
+    NED = {
+        "fbref_id": 23,
+        "fbref_name": "Eredivisie",
+    }
+    AUT = {
+        "fbref_id": 56,
+        "fbref_name": "Austrian-Bundesliga",
+    }
+    POL = {
+        "fbref_id": 36,
+        "fbref_name": "Ekstraklasa",
+    }
 
     @property
     def fbref_id(self):
