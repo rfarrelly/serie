@@ -2,9 +2,11 @@ from enum import Enum
 import os
 from pathlib import Path
 from dataclasses import dataclass
-from dotenv import load_dotenv
+from dotenv import load_dotenv, dotenv_values
 
 load_dotenv()
+
+env_values = dotenv_values()
 
 
 class Leagues(Enum):
@@ -64,18 +66,18 @@ class Leagues(Enum):
         "fbref_id": 32,
         "fbref_name": "Primeira-Liga",
     }
-    BEL = {
-        "fbref_id": 37,
-        "fbref_name": "Belgian-Pro-League",
-    }
+    # BEL = {
+    #     "fbref_id": 37,
+    #     "fbref_name": "Belgian-Pro-League",
+    # }
     NED = {
         "fbref_id": 23,
         "fbref_name": "Eredivisie",
     }
-    AUT = {
-        "fbref_id": 56,
-        "fbref_name": "Austrian-Bundesliga",
-    }
+    # AUT = {
+    #     "fbref_id": 56,
+    #     "fbref_name": "Austrian-Bundesliga",
+    # }
     POL = {
         "fbref_id": 36,
         "fbref_name": "Ekstraklasa",
@@ -107,7 +109,7 @@ class AppConfig:
         return path
 
 
-TIME_DELTA = int(os.getenv("TIME_DELTA"))
+TIME_DELTA = int(env_values.get("TIME_DELTA"))
 
 # Default app configuration
 DEFAULT_CONFIG = AppConfig()
