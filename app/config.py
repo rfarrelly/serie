@@ -1,5 +1,6 @@
 from enum import Enum
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from dataclasses import dataclass
 from dotenv import load_dotenv, dotenv_values
@@ -109,7 +110,9 @@ class AppConfig:
         return path
 
 
+TODAY = datetime.now().date()
 TIME_DELTA = int(env_values.get("TIME_DELTA"))
+DAYS_AHEAD = TODAY + timedelta(days=TIME_DELTA)
 
 # Default app configuration
 DEFAULT_CONFIG = AppConfig()
