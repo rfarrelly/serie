@@ -1,6 +1,6 @@
 import stats
 import pandas as pd
-import ingestion
+from ingestion import DataIngestion
 from config import Leagues, AppConfig, DEFAULT_CONFIG, TIME_DELTA
 from datetime import datetime, timedelta
 
@@ -25,17 +25,11 @@ class LeagueProcessor:
         self.config = config
         self.league_name = league.fbref_name
         self.fbref_dir = config.get_fbref_league_dir(self.league_name)
+        self.ingestion = DataIngestion(config)
 
     def get_data(self):
-        ingestion.get_fbref_data(
-            url=ingestion.fbref_url_builder(
-                base_url=self.config.fbref_base_url,
-                league=self.league,
-                season=self.config.current_season,
-            ),
-            league_name=self.league_name,
-            season=self.config.current_season,
-            dir=self.fbref_dir,
+        self.ingestion.get_fbref_data(
+            league=self.league, season=self.config.current_season
         )
 
     def compute_league_rpi(self):
