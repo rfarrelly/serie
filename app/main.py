@@ -107,6 +107,9 @@ def main():
             all_candidates.extend(league_candidates)
 
     if all_candidates:
+        print(
+            f"Getting betting candidates for the period {TODAY} to {TODAY + timedelta(days=TIME_DELTA)}"
+        )
         candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
         candidates_df = candidates_df[
             candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
