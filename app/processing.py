@@ -33,7 +33,7 @@ class LeagueProcessor:
             league=self.league, season=self.config.current_season
         )
 
-    def generate_bet_candidates(self):
+    def generate_bet_candidates(self) -> dict:
 
         fixtures = filter_date_range(self.unplayed_matches_df)
 
@@ -54,12 +54,15 @@ class LeagueProcessor:
                 fixture.Home,
                 fixture.Away,
             )
+
             home_rpi_latest = compute_rpi(all_teams_stats[home_team], all_teams_stats)[
                 "RPI"
             ].iloc[-1]
+
             away_rpi_latest = compute_rpi(all_teams_stats[away_team], all_teams_stats)[
                 "RPI"
             ].iloc[-1]
+
             rpi_diff = round(abs(home_rpi_latest - away_rpi_latest), 2)
 
             candidates.append(

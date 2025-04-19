@@ -30,7 +30,7 @@ class DataIngestion:
         try:
             print(f"Getting data for url: {url}")
             response = requests.get(url, impersonate="safari_ios")
-            response.raise_for_status()  # Raise an HTTPError for bad responses (4xx and 5xx)
+            response.raise_for_status()
         except requests.exceptions.HTTPError as http_err:
             print(f"HTTP error occurred: {http_err}")
         except requests.exceptions.ConnectionError as conn_err:

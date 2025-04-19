@@ -98,24 +98,24 @@ def compute_opponents_weekly_ppg(
         ]
     )
 
-    weeks_columns_sorted = sorted(
-        opponents_points[opponents_points.columns[1:]].columns
-    )
+    week_columns = opponents_points.columns[1:]
+
+    weeks_columns_sorted = sorted(opponents_points[week_columns].columns)
 
     opponents_points = opponents_points[["Team"] + weeks_columns_sorted]
 
-    opponents_points[opponents_points.columns[1:]] = (
-        opponents_points[opponents_points.columns[1:]].T.expanding().mean().T.round(2)
+    opponents_points[week_columns] = (
+        opponents_points[week_columns].T.expanding().mean().T.round(2)
     )
 
-    merged_points = stats_df[["Wk", "Date", "Home", "Away", "PPG"]].merge(
+    return stats_df[["Wk", "Date", "Home", "Away", "PPG"]].merge(
         opponents_points, left_on=merge_column, right_on="Team"
     )
 
-    return merged_points
 
-
-def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStats]):
+def compute_rpi(
+    target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStats]
+) -> pd.DataFrame:
 
     home_opps_points = compute_opponents_weekly_ppg(
         stats_df=target_team_stats.stats_df,
@@ -139,16 +139,15 @@ def compute_rpi(target_team_stats: TeamStats, all_teams_stats: dict[str:TeamStat
         .sort_values("Date")
     )
 
+    week_columns = home_away_opps_points.columns[4:]
+
     # Compute the combined home & away average ppg of opponents played
-    home_away_opps_points[home_away_opps_points.columns[4:]] = (
-        home_away_opps_points[home_away_opps_points.columns[4:]]
-        .expanding()
-        .mean()
-        .round(2)
+    home_away_opps_points[week_columns] = (
+        home_away_opps_points[week_columns].expanding().mean().round(2)
     )
 
     # Average PPG of opponents played spans the diagonal of this dataframe
-    opponent_ppg = np.diag(home_away_opps_points[home_away_opps_points.columns[4:]])
+    opponent_ppg = np.diag(home_away_opps_points[week_columns])
     home_away_opps_points["OppsPPG"] = opponent_ppg.round(2)
 
     # Calculate the RPI of the target team
