@@ -13,26 +13,36 @@ class LeagueProcessor:
         self.fbref_dir = config.get_fbref_league_dir(self.league_name)
         self.ingestion = DataIngestion(config)
 
+    @property
+    def played_matches_df(self):
+        return pd.read_csv(
+            self.fbref_dir / f"{self.league_name}_{self.config.current_season}.csv",
+            dtype={"Wk": int},
+        )
+
+    @property
+    def unplayed_matches_df(self):
+        return pd.read_csv(
+            self.fbref_dir
+            / f"unplayed_{self.league_name}_{self.config.current_season}.csv",
+            dtype={"Wk": int},
+        )
+
     def get_data(self):
         self.ingestion.get_fbref_data(
             league=self.league, season=self.config.current_season
         )
 
     def compute_league_rpi(self):
-        played_fixtures_file = (
-            self.fbref_dir / f"{self.league_name}_{self.config.current_season}.csv"
-        )
-        future_fixtures_file = (
-            self.fbref_dir
-            / f"unplayed_{self.league_name}_{self.config.current_season}.csv"
-        )
 
-        historical_df = pd.read_csv(played_fixtures_file, dtype={"Wk": int})
-        future_fixtures_df = pd.read_csv(future_fixtures_file, dtype={"Wk": int})
-        fixtures = filter_date_range(future_fixtures_df, "Date")
+        fixtures = filter_date_range(self.unplayed_matches_df)
 
-        teams = set(historical_df["Home"]).union(historical_df["Away"])
-        all_teams_stats = {team: TeamStats(team, historical_df) for team in teams}
+        teams = set(self.played_matches_df["Home"]).union(
+            self.played_matches_df["Away"]
+        )
+        all_teams_stats = {
+            team: TeamStats(team, self.played_matches_df) for team in teams
+        }
 
         candidates = []
 

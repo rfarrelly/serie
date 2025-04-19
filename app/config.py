@@ -112,7 +112,7 @@ class AppConfig:
 
 TODAY = datetime.now().date()
 TIME_DELTA = int(env_values.get("TIME_DELTA"))
-DAYS_AHEAD = TODAY + timedelta(days=TIME_DELTA)
+END_DATE = TODAY + timedelta(days=TIME_DELTA)
 
 # Default app configuration
 DEFAULT_CONFIG = AppConfig()

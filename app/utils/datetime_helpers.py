@@ -1,14 +1,8 @@
 import pandas as pd
-from config import TODAY, DAYS_AHEAD
+from config import TODAY, END_DATE
 
 
-def filter_date_range(df, date_column):
-    end_date = DAYS_AHEAD
-
-    df[date_column] = pd.to_datetime(df[date_column])
-
-    filtered_df = df[
-        (df[date_column].dt.date >= TODAY) & (df[date_column].dt.date <= end_date)
-    ]
-
+def filter_date_range(df: pd.DataFrame) -> pd.DataFrame:
+    df["Date"] = pd.to_datetime(df["Date"])
+    filtered_df = df[(df["Date"].dt.date >= TODAY) & (df["Date"].dt.date <= END_DATE)]
     return filtered_df
