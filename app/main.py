@@ -4,29 +4,29 @@ from processing import LeagueProcessor
 
 
 def main():
-    all_candidates = []
+    all_bet_candidates = []
 
     for league in Leagues:
 
-        processor = LeagueProcessor(league, DEFAULT_CONFIG)
-
         print(f"Processing {league.name} ({league.value['fbref_name']})")
+
+        processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
         processor.get_data()
 
-        league_candidates = processor.compute_league_rpi()
+        bet_candidates = processor.generate_bet_candidates()
 
-        if league_candidates:
-            all_candidates.extend(league_candidates)
+        if bet_candidates:
+            all_bet_candidates.extend(bet_candidates)
 
-    if all_candidates:
+    if all_bet_candidates:
         print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
-        candidates_df = pd.DataFrame(all_candidates).sort_values(by="RPI_Diff")
-        candidates_df = candidates_df[
-            candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
+        bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(by="RPI_Diff")
+        bet_candidates_df = bet_candidates_df[
+            bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
         ]
-        candidates_df.to_csv("candidates.csv", index=False)
-        print("Saved sorted candidate matches to candidates.csv")
+        bet_candidates_df.to_csv("bet_candidates.csv", index=False)
+        print("Saved sorted matches to bet_candidates.csv")
 
 
 if __name__ == "__main__":

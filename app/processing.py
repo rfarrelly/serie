@@ -33,7 +33,7 @@ class LeagueProcessor:
             league=self.league, season=self.config.current_season
         )
 
-    def compute_league_rpi(self):
+    def generate_bet_candidates(self):
 
         fixtures = filter_date_range(self.unplayed_matches_df)
 
