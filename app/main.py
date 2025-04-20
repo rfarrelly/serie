@@ -32,18 +32,6 @@ def main():
 
         latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
 
-        print("Saving bet candidates to historical_bet_candidates.csv")
-        file_exists = os.path.isfile("historical_bet_candidates.csv")
-        if file_exists:
-            historical_bet_candidates_df = pd.read_csv("historical_bet_candidates.csv")
-            historical_bet_candidates_df = pd.concat(
-                [historical_bet_candidates_df, latest_bet_candidates_df]
-            ).drop_duplicates(keep="first")
-        else:
-            latest_bet_candidates_df.to_csv(
-                "historical_bet_candidates.csv", index=False
-            )
-
 
 if __name__ == "__main__":
     main()
