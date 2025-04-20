@@ -1,4 +1,5 @@
 import pandas as pd
+import os
 from config import Leagues, DEFAULT_CONFIG, TODAY, END_DATE
 from processing import LeagueProcessor
 
@@ -12,7 +13,7 @@ def main():
 
         processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
-        processor.get_data()
+        # processor.get_data()
 
         bet_candidates = processor.generate_bet_candidates()
 
@@ -21,12 +22,27 @@ def main():
 
     if all_bet_candidates:
         print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
-        bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(by="RPI_Diff")
-        bet_candidates_df = bet_candidates_df[
-            bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
+        latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
+            by="RPI_Diff"
+        )
+
+        latest_bet_candidates_df = latest_bet_candidates_df[
+            latest_bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
         ]
-        bet_candidates_df.to_csv("bet_candidates.csv", index=False)
-        print("Saved sorted matches to bet_candidates.csv")
+
+        latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
+
+        print("Saving bet candidates to historical_bet_candidates.csv")
+        file_exists = os.path.isfile("historical_bet_candidates.csv")
+        if file_exists:
+            historical_bet_candidates_df = pd.read_csv("historical_bet_candidates.csv")
+            historical_bet_candidates_df = pd.concat(
+                [historical_bet_candidates_df, latest_bet_candidates_df]
+            ).drop_duplicates(keep="first")
+        else:
+            latest_bet_candidates_df.to_csv(
+                "historical_bet_candidates.csv", index=False
+            )
 
 
 if __name__ == "__main__":

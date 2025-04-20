@@ -1,4 +1,4 @@
-from config import Leagues, AppConfig
+from config import Leagues, AppConfig, TODAY, END_DATE
 from ingestion import DataIngestion
 from stats import TeamStats, compute_rpi
 from utils.datetime_helpers import filter_date_range
@@ -35,7 +35,7 @@ class LeagueProcessor:
 
     def generate_bet_candidates(self) -> dict:
 
-        fixtures = filter_date_range(self.unplayed_matches_df)
+        fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
 
         teams = set(self.played_matches_df["Home"]).union(
             self.played_matches_df["Away"]

@@ -1,8 +1,12 @@
 import pandas as pd
-from config import TODAY, END_DATE
+from datetime import datetime
 
 
-def filter_date_range(df: pd.DataFrame) -> pd.DataFrame:
+def filter_date_range(
+    df: pd.DataFrame, start_date: datetime, end_date: datetime
+) -> pd.DataFrame:
     df["Date"] = pd.to_datetime(df["Date"])
-    filtered_df = df[(df["Date"].dt.date >= TODAY) & (df["Date"].dt.date <= END_DATE)]
+    filtered_df = df[
+        (df["Date"].dt.date >= start_date) & (df["Date"].dt.date <= end_date)
+    ]
     return filtered_df
