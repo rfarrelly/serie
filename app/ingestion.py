@@ -2,6 +2,7 @@ import pandas as pd
 from curl_cffi import requests
 from config import Leagues, AppConfig
 from utils.url_helpers import fbref_url_builder
+import time
 
 
 class DataIngestion:
@@ -29,7 +30,18 @@ class DataIngestion:
 
         try:
             print(f"Getting data for url: {url}")
-            response = requests.get(url, impersonate="safari_ios")
+            response = requests.get(
+                url,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                    "Accept-Language": "en-US,en;q=0.5",
+                    "DNT": "1",
+                    "Connection": "keep-alive",
+                    "Upgrade-Insecure-Requests": "1",
+                },
+                impersonate="safari_ios",
+            )
             response.raise_for_status()
         except requests.exceptions.HTTPError as http_err:
             print(f"HTTP error occurred: {http_err}")
@@ -67,6 +79,7 @@ class DataIngestion:
         self.write_files(
             unplayed_fixtures_df, dir_path, league_name, season, prefix="unplayed_"
         )
+        time.sleep(3)
 
     @staticmethod
     def _parse_score(score: str) -> tuple:
