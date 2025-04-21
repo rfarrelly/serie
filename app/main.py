@@ -1,5 +1,5 @@
 import pandas as pd
-from config import Leagues, DEFAULT_CONFIG, TODAY, END_DATE
+from config import Leagues, DEFAULT_CONFIG, TODAY, END_DATE, GET_DATA
 from processing import LeagueProcessor
 
 
@@ -12,7 +12,8 @@ def main():
 
         processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
-        processor.get_data()
+        if GET_DATA == "1":
+            processor.get_data()
 
         bet_candidates = processor.generate_bet_candidates()
 
