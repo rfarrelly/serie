@@ -20,7 +20,6 @@ class TeamStats:
         self.team = team
         self.match_history_df = self._filter_team_matches(match_history_df)
 
-        # Process data
         self._calculate_points()
         self._calculate_ppg()
         self._identify_opponents()
@@ -83,12 +82,10 @@ class TeamStats:
             self.match_history_df["TeamPoints"].expanding().mean().round(2)
         )
 
-        # Add team identifier column
         self.match_history_df["Team"] = self.team
 
     def _identify_opponents(self) -> None:
         """Identify opponents in each match."""
-        # Vectorized approach instead of apply
         self.match_history_df["Opponent"] = np.where(
             self.match_history_df["Home"] == self.team,
             self.match_history_df["Away"],
