@@ -1,6 +1,6 @@
 import pandas as pd
 from config import Leagues, DEFAULT_CONFIG, TODAY, END_DATE, GET_DATA
-from processing import LeagueProcessor
+from processing import LeagueProcessor, process_historical_data
 
 
 def main():
@@ -31,6 +31,8 @@ def main():
         ]
 
         latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
+
+    process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
 
 
 if __name__ == "__main__":

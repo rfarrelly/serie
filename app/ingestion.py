@@ -52,13 +52,15 @@ class DataIngestion:
         except requests.exceptions.RequestException as req_err:
             print(f"An error occurred: {req_err}")
 
-        columns = ["Wk", "Day", "Date", "Time", "Home", "Score", "Away"]
+        columns = ["Wk", "League", "Day", "Date", "Time", "Home", "Score", "Away"]
 
         data_df = pd.read_html(response.content)[0]
 
         data_df = data_df[
             ~data_df["Notes"].isin(["Match Suspended", "Match Cancelled"])
         ]
+
+        data_df["League"] = league_name
 
         unplayed_fixtures_df = (
             data_df[data_df["Score"].isna()][columns]

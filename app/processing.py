@@ -81,3 +81,80 @@ class LeagueProcessor:
 
         candidates_df = pd.DataFrame(candidates)
         return candidates_df.to_dict(orient="records")
+
+
+def process_historical_data(config: AppConfig) -> pd.DataFrame:
+    print("Processing historical data")
+    files = [
+        str(file)
+        for file in config.data_dir.rglob("*.csv")
+        if file.is_file()
+        if "unplayed" not in str(file)
+    ]
+    candidates = []
+    input_count = 0
+
+    for file in files:
+
+        fixtures = pd.read_csv(file, dtype={"Wk": int}).sort_values("Date")
+
+        input_count += fixtures.shape[0]
+
+        teams = set(fixtures["Home"]).union(fixtures["Away"])
+
+        all_teams_stats = {team: TeamStats(team, fixtures) for team in teams}
+
+        rpi_df_dict = {
+            team: compute_rpi(all_teams_stats[team], all_teams_stats) for team in teams
+        }
+
+        # Shift RPI forward 1 place for analysis
+        for team, df in rpi_df_dict.items():
+            df["RPI"] = df["RPI"].shift(periods=1, fill_value=0)
+
+        for fixture in fixtures.itertuples(index=False):
+            week, date, time, league, home_team, away_team, fthg, ftag = (
+                fixture.Wk,
+                fixture.Date,
+                fixture.Time,
+                fixture.League,
+                fixture.Home,
+                fixture.Away,
+                fixture.FTHG,
+                fixture.FTAG,
+            )
+
+            home_rpi_df = rpi_df_dict[home_team]
+            away_rpi_df = rpi_df_dict[away_team]
+
+            home_rpi_df = home_rpi_df[
+                (home_rpi_df["Team"] == away_team) & (home_rpi_df["Date"] == date)
+            ]
+            away_rpi_df = away_rpi_df[
+                (away_rpi_df["Team"] == home_team) & (away_rpi_df["Date"] == date)
+            ]
+
+            home_rpi = home_rpi_df["RPI"].values[0]
+            away_rpi = away_rpi_df["RPI"].values[0]
+
+            rpi_diff = round(abs(home_rpi - away_rpi), 2)
+
+            candidates.append(
+                {
+                    "Wk": week,
+                    "Date": date,
+                    "Time": time,
+                    "League": league,
+                    "Home": home_team,
+                    "Away": away_team,
+                    "FTHG": fthg,
+                    "FTAG": ftag,
+                    "hRPI": float(home_rpi),
+                    "aRPI": float(away_rpi),
+                    "RPI_Diff": rpi_diff,
+                }
+            )
+    candidates_df = pd.DataFrame(candidates)
+    print(f"Input Count: {input_count}")
+    print(f"Output Count: {candidates_df.shape[0]}")
+    return candidates_df.sort_values("Date")
