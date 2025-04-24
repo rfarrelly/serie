@@ -152,6 +152,7 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
                     "hRPI": float(home_rpi),
                     "aRPI": float(away_rpi),
                     "RPI_Diff": rpi_diff,
+                    "FTR": "H" if fthg > ftag else "D" if fthg == ftag else "A",
                 }
             )
     candidates_df = pd.DataFrame(candidates)
