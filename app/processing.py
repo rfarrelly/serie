@@ -28,8 +28,13 @@ class LeagueProcessor:
             dtype={"Wk": int},
         )
 
-    def get_data(self):
+    def get_fbref_data(self):
         self.ingestion.get_fbref_data(
+            league=self.league, season=self.config.current_season
+        )
+
+    def get_fbduk_data(self):
+        self.ingestion.get_fbduk_data(
             league=self.league, season=self.config.current_season
         )
 

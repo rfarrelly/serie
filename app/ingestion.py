@@ -1,7 +1,11 @@
 import pandas as pd
 from curl_cffi import requests
 from config import Leagues, AppConfig
-from utils.url_helpers import fbref_url_builder
+from utils.url_helpers import (
+    fbref_url_builder,
+    fbduk_extra_url_builder,
+    fbduk_main_url_builder,
+)
 import time
 
 
@@ -82,6 +86,33 @@ class DataIngestion:
             unplayed_fixtures_df, dir_path, league_name, season, prefix="unplayed_"
         )
         time.sleep(3)
+
+    def get_fbduk_data(self, league: Leagues, season: str):
+        league_name = league.fbref_name
+
+        if league.is_extra:
+            url = fbduk_extra_url_builder(self.config.fbduk_base_url_extra, league)
+            columns = ["Date", "Time", "Season", "Home", "Away", "PSCH", "PSCD", "PSCA"]
+            season_extra_format = season.replace("-", "/")
+        else:
+            url = fbduk_main_url_builder(
+                self.config.fbduk_base_url_main, league, season
+            )
+            columns = ["Date", "Time", "HomeTeam", "AwayTeam", "PSCH", "PSCD", "PSCA"]
+
+        dir_path = self.config.get_fbduk_league_dir(league_name)
+
+        data_df = pd.read_csv(url, encoding="latin-1")[columns].rename(
+            columns={"HomeTeam": "Home", "AwayTeam": "Away"}
+        )
+
+        if "Season" in data_df.columns:
+            data_df = data_df[data_df["Season"] == season_extra_format]
+
+        data_df["Date"] = pd.to_datetime(
+            data_df["Date"], format="%d/%m/%Y"
+        ).dt.strftime("%Y-%m-%d")
+        self.write_files(data_df, dir_path, league_name, season)
 
     @staticmethod
     def _parse_score(score: str) -> tuple:

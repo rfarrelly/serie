@@ -13,7 +13,8 @@ def main():
         processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
         if GET_DATA == "1":
-            processor.get_data()
+            processor.get_fbref_data()
+            processor.get_fbduk_data()
 
         bet_candidates = processor.generate_bet_candidates()
 
