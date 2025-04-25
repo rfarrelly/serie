@@ -16,3 +16,5 @@ wheels/
 
 # Custom files and folders
 DATA
+
+!team_name_dictionary.csv

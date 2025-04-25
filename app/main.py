@@ -1,6 +1,50 @@
 import pandas as pd
+import numpy as np
 from config import Leagues, DEFAULT_CONFIG, TODAY, END_DATE, GET_DATA
 from processing import LeagueProcessor, process_historical_data
+from utils.team_name_dict_builder import TeamNameManagerCLI
+
+
+def build_team_name_dictionary():
+    data_sources = ["fbref", "fbduk"]
+    csv_path = "team_name_dictionary.csv"
+
+    # Create manager
+    manager = TeamNameManagerCLI(csv_path, data_sources)
+
+    fbduk_teams = np.unique(
+        pd.concat(
+            [
+                pd.read_csv(str(file))[["Home", "Away"]]
+                for file in DEFAULT_CONFIG.fbduk_data_dir.rglob("*.csv")
+                if file.is_file()
+            ]
+        )
+        .to_numpy()
+        .flatten()
+    )
+
+    fbref_teams = np.unique(
+        pd.concat(
+            [
+                pd.read_csv(str(file))[["Home", "Away"]]
+                for file in DEFAULT_CONFIG.fbref_data_dir.rglob("*.csv")
+                if file.is_file()
+            ]
+        )
+        .to_numpy()
+        .flatten()
+    )
+
+    manager.import_team_list(
+        fbref_teams, "fbref", auto_match=True, auto_threshold=0.7, interactive=True
+    )
+
+    manager.import_team_list(
+        fbduk_teams, "fbduk", auto_match=True, auto_threshold=0.7, interactive=True
+    )
+
+    print(f"Dictionary saved to {csv_path}")
 
 
 def main():
