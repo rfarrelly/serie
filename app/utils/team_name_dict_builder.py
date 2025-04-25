@@ -445,44 +445,7 @@ class TeamNameManagerCLI:
 
 
 def main():
-    """Example of using the team name mapper with your specific data"""
-    # Define data sources
-    data_sources = ["fbref", "fbduk"]
-    csv_path = "team_name_dictionary.csv"
-
-    # Create manager
-    manager = TeamNameManagerCLI(csv_path, data_sources)
-
-    # Define fbduk team names
-    fbduk_teams = [
-        "Man United",
-        "Ipswich",
-        "Arsenal",
-        "Everton",
-        "Newcastle",
-        "Nott'm Forest",
-        "West Ham",
-        "Brentford",
-        "Chelsea",
-        "Leicester",
-        "Brighton",
-        "Crystal Palace",
-        "Fulham",
-        "Man City",
-        "Southampton",
-        "Tottenham",
-        "Aston Villa",
-        "Bournemouth",
-        "Wolves",
-        "Liverpool",
-    ]
-
-    # Import fbduk team names with auto-matching
-    manager.import_team_list(
-        fbduk_teams, "fbduk", auto_match=True, auto_threshold=0.7, interactive=True
-    )
-
-    print(f"Dictionary saved to {csv_path}")
+    pass
 
 
 if __name__ == "__main__":
