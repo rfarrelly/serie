@@ -47,37 +47,78 @@ def build_team_name_dictionary():
     print(f"Dictionary saved to {csv_path}")
 
 
-def main():
-    all_bet_candidates = []
-
-    for league in Leagues:
-
-        print(f"Processing {league.name} ({league.value['fbref_name']})")
-
-        processor = LeagueProcessor(league, DEFAULT_CONFIG)
-
-        if GET_DATA == "1":
-            processor.get_fbref_data()
-            processor.get_fbduk_data()
-
-        bet_candidates = processor.generate_bet_candidates()
-
-        if bet_candidates:
-            all_bet_candidates.extend(bet_candidates)
-
-    if all_bet_candidates:
-        print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
-        latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
-            by="RPI_Diff"
-        )
-
-        latest_bet_candidates_df = latest_bet_candidates_df[
-            latest_bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
+def merge_historical_odds_data():
+    fbduk_odds_data = pd.concat(
+        [
+            pd.read_csv(str(file))
+            for file in DEFAULT_CONFIG.fbduk_data_dir.rglob("*.csv")
+            if file.is_file()
         ]
+    )
 
-        latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
+    fbref_historical_rpi_data = pd.read_csv("historical_rpi.csv")
 
-    process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
+    print(f"fbduk data num matches: {fbduk_odds_data.shape[0]}")
+    print(f"fbref data num matches: {fbref_historical_rpi_data.shape[0]}")
+
+    team_name_dict = pd.read_csv("team_name_dictionary.csv")
+
+    fbduk_to_fbref = dict(zip(team_name_dict["fbduk"], team_name_dict["fbref"]))
+
+    def map_team_name(team_name):
+        return fbduk_to_fbref.get(team_name, team_name)
+
+    fbduk_odds_data["Home"] = fbduk_odds_data["Home"].apply(map_team_name)
+    fbduk_odds_data["Away"] = fbduk_odds_data["Away"].apply(map_team_name)
+
+    merged_df = (
+        pd.merge(
+            fbref_historical_rpi_data,
+            fbduk_odds_data,
+            on=["Date", "Home", "Away"],
+            how="outer",
+        )
+        .drop(["Time_x", "Season"], axis="columns")
+        .sort_values("Date")
+    ).rename({"Time_y": "Time"}, axis="columns")
+
+    print(f"Merged historical odds size: {merged_df.shape[0]}")
+
+    merged_df.to_csv("historical_rpi_and_odds.csv", index=False)
+
+
+def main():
+    merge_historical_odds_data()
+    # all_bet_candidates = []
+
+    # for league in Leagues:
+
+    #     print(f"Processing {league.name} ({league.value['fbref_name']})")
+
+    #     processor = LeagueProcessor(league, DEFAULT_CONFIG)
+
+    #     if GET_DATA == "1":
+    #         processor.get_fbref_data()
+    #         processor.get_fbduk_data()
+
+    #     bet_candidates = processor.generate_bet_candidates()
+
+    #     if bet_candidates:
+    #         all_bet_candidates.extend(bet_candidates)
+
+    # if all_bet_candidates:
+    #     print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
+    #     latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
+    #         by="RPI_Diff"
+    #     )
+
+    #     latest_bet_candidates_df = latest_bet_candidates_df[
+    #         latest_bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
+    #     ]
+
+    #     latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
+
+    # process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
 
 
 if __name__ == "__main__":
