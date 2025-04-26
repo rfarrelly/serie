@@ -92,7 +92,7 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
     print("Processing historical data")
     files = [
         str(file)
-        for file in config.data_dir.rglob("*.csv")
+        for file in config.fbref_data_dir.rglob("*.csv")
         if file.is_file()
         if "unplayed" not in str(file)
     ]
