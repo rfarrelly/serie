@@ -4,6 +4,32 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 from utils.odds_helpers import get_no_vig_odds_multiway
 
+# A value > 1 indicates potential value bet
+VALUE_THRESHOLD = 1.05  # Typically use >1.05 or >1.1 to account for model uncertainty
+
+
+def convert_odds_to_probability(odds):
+    return 1 / odds
+
+
+def get_fair_odds_future(r):
+    odds = get_no_vig_odds_multiway(list(r[["PSH", "PSD", "PSA"]]))
+    r["PSH_fair_odds"] = odds[0]
+    r["PSD_fair_odds"] = odds[1]
+    r["PSA_fair_odds"] = odds[2]
+
+    return r
+
+
+def get_fair_odds_past(r):
+    odds = get_no_vig_odds_multiway(list(r[["PSCH", "PSCD", "PSCA"]]))
+    r["PSCH_fair_odds"] = odds[0]
+    r["PSCD_fair_odds"] = odds[1]
+    r["PSCA_fair_odds"] = odds[2]
+
+    return r
+
+
 # Load historical data with non-zero RPI values
 historical_df = pd.read_csv("historical_rpi_and_odds.csv")
 print(f"Historical Data Size: {historical_df.shape[0]}")
@@ -13,13 +39,21 @@ print(f"Historical Data Size After removing NaNs: {historical_df.shape[0]}")
 # Filter out matches with zero RPI values
 valid_data = historical_df[
     historical_df["Wk"] >= 10
-]  # historical_df[(historical_df["hRPI"] != 0) & (historical_df["aRPI"] != 0)]
+].copy()  # historical_df[(historical_df["hRPI"] != 0) & (historical_df["aRPI"] != 0)]
+
+valid_data["PSCH_fair_odds"] = 0
+valid_data["PSCD_fair_odds"] = 0
+valid_data["PSCA_fair_odds"] = 0
+
+valid_data = valid_data.apply(get_fair_odds_past, axis="columns")
+
+feature_columns = ["hRPI", "aRPI"]
 
 # Features and targets
-X = valid_data[["hRPI", "aRPI", "RPI_Diff"]].values
-y_home = valid_data["PSCH"].values
-y_draw = valid_data["PSCD"].values
-y_away = valid_data["PSCA"].values
+X = valid_data[feature_columns].values
+y_home = valid_data["PSCH_fair_odds"].values
+y_draw = valid_data["PSCD_fair_odds"].values
+y_away = valid_data["PSCA_fair_odds"].values
 
 # Split the data into training and testing sets (80% train, 20% test)
 X_train, X_test, y_home_train, y_home_test = train_test_split(
@@ -63,23 +97,7 @@ future_matches["PSH_fair_odds"] = 0
 future_matches["PSD_fair_odds"] = 0
 future_matches["PSA_fair_odds"] = 0
 
-
-def get_fair_odds(r):
-    odds = get_no_vig_odds_multiway(list(r[["PSH", "PSD", "PSA"]]))
-    r["PSH_fair_odds"] = odds[0]
-    r["PSD_fair_odds"] = odds[1]
-    r["PSA_fair_odds"] = odds[2]
-
-    return r
-
-
-future_matches = future_matches.apply(get_fair_odds, axis="columns")
-
-
-# Convert odds to implied probabilities
-def convert_odds_to_probability(odds):
-    return 1 / odds
-
+future_matches = future_matches.apply(get_fair_odds_future, axis="columns")
 
 # Normalize probabilities to remove the overround
 future_matches["PSH_fair_prob"] = convert_odds_to_probability(
@@ -93,7 +111,7 @@ future_matches["PSA_fair_prob"] = convert_odds_to_probability(
 )
 
 # Prepare features for prediction
-X_future = future_matches[["hRPI", "aRPI", "RPI_Diff"]].values
+X_future = future_matches[feature_columns].values
 
 # Predict odds
 future_matches["pred_PSH"] = home_model.predict(X_future)
@@ -132,21 +150,12 @@ future_matches["PSA_value"] = (
     future_matches["pred_PSA_prob_norm"] / future_matches["PSA_fair_prob"]
 )
 
-# A value > 1 indicates potential value bet
-value_threshold = 1.1  # Typically use >1.05 or >1.1 to account for model uncertainty
-
 # Filter value bets
 home_value_bets: pd.DataFrame = future_matches[
-    future_matches["PSH_value"] > value_threshold
+    future_matches["PSH_value"] > VALUE_THRESHOLD
 ]
-draw_value_bets = future_matches[future_matches["PSD_value"] > value_threshold]
-away_value_bets = future_matches[future_matches["PSA_value"] > value_threshold]
-
-# value_bets = home_value_bets.merge(
-#     draw_value_bets, on=[x for x in home_value_bets.columns], how="left"
-# ).merge(away_value_bets, on=[x for x in home_value_bets.columns], how="left")
-
-# value_bets.to_csv("value_bets.csv", index=False)
+draw_value_bets = future_matches[future_matches["PSD_value"] > VALUE_THRESHOLD]
+away_value_bets = future_matches[future_matches["PSA_value"] > VALUE_THRESHOLD]
 
 print("Home Value Bets:")
 print(home_value_bets[["Home", "Away", "PSH", "pred_PSH", "PSH_value"]])
@@ -162,21 +171,21 @@ plt.figure(figsize=(12, 8))
 
 plt.subplot(1, 3, 1)
 plt.scatter(future_matches["PSH"], future_matches["PSH_value"])
-plt.axhline(y=value_threshold, color="r", linestyle="--")
+plt.axhline(y=VALUE_THRESHOLD, color="r", linestyle="--")
 plt.title("Home Win Value")
 plt.xlabel("Odds")
 plt.ylabel("Value Ratio")
 
 plt.subplot(1, 3, 2)
 plt.scatter(future_matches["PSD"], future_matches["PSD_value"])
-plt.axhline(y=value_threshold, color="r", linestyle="--")
+plt.axhline(y=VALUE_THRESHOLD, color="r", linestyle="--")
 plt.title("Draw Value")
 plt.xlabel("Odds")
 plt.ylabel("Value Ratio")
 
 plt.subplot(1, 3, 3)
 plt.scatter(future_matches["PSA"], future_matches["PSA_value"])
-plt.axhline(y=value_threshold, color="r", linestyle="--")
+plt.axhline(y=VALUE_THRESHOLD, color="r", linestyle="--")
 plt.title("Away Win Value")
 plt.xlabel("Odds")
 plt.ylabel("Value Ratio")

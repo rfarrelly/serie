@@ -127,12 +127,12 @@ class Leagues(Enum):
 
 @dataclass
 class AppConfig:
-    fbref_base_url: str = os.getenv("FBREF_BASE_URL")
-    fbduk_base_url_main: str = os.getenv("FBDUK_BASE_URL_MAIN")
-    fbduk_base_url_extra: str = os.getenv("FBDUK_BASE_URL_EXTRA")
-    current_season: str = os.getenv("CURRENT_SEASON")
-    rpi_diff_threshold: float = float(os.getenv("RPI_DIFF_THRESHOLD"))
-    data_dir: Path = Path(os.getenv("DATA_DIR"))
+    fbref_base_url: str = env_values.get("FBREF_BASE_URL")
+    fbduk_base_url_main: str = env_values.get("FBDUK_BASE_URL_MAIN")
+    fbduk_base_url_extra: str = env_values.get("FBDUK_BASE_URL_EXTRA")
+    current_season: str = env_values.get("CURRENT_SEASON")
+    rpi_diff_threshold: float = float(env_values.get("RPI_DIFF_THRESHOLD"))
+    data_dir: Path = Path(env_values.get("DATA_DIR"))
 
     @property
     def fbref_data_dir(self):

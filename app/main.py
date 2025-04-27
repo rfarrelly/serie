@@ -177,9 +177,9 @@ def main():
 
         latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
 
-    # process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
-    # merge_historical_odds_data()
-    # merge_future_odds_data()
+    merge_future_odds_data()
+    process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
+    merge_historical_odds_data()
 
 
 if __name__ == "__main__":
