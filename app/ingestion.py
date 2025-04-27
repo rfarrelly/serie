@@ -6,6 +6,7 @@ from utils.url_helpers import (
     fbduk_extra_url_builder,
     fbduk_main_url_builder,
 )
+from utils.datetime_helpers import format_date
 import time
 
 
@@ -109,9 +110,8 @@ class DataIngestion:
         if "Season" in data_df.columns:
             data_df = data_df[data_df["Season"] == season_extra_format]
 
-        data_df["Date"] = pd.to_datetime(
-            data_df["Date"], format="%d/%m/%Y"
-        ).dt.strftime("%Y-%m-%d")
+        data_df = format_date(data_df)
+
         self.write_files(data_df, dir_path, league_name, season)
 
     @staticmethod

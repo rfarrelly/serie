@@ -3,6 +3,7 @@ import numpy as np
 from config import Leagues, DEFAULT_CONFIG, TODAY, END_DATE, GET_DATA
 from processing import LeagueProcessor, process_historical_data
 from utils.team_name_dict_builder import TeamNameManagerCLI
+from utils.datetime_helpers import format_date
 
 
 def build_team_name_dictionary():
@@ -103,9 +104,7 @@ def merge_future_odds_data():
             "PSA",
         ]
     ]
-    fbduk_odds_data["Date"] = pd.to_datetime(
-        fbduk_odds_data["Date"], format="%d/%m/%Y"
-    ).dt.strftime("%Y-%m-%d")
+    fbduk_odds_data = format_date(fbduk_odds_data)
 
     team_name_dict = pd.read_csv("team_name_dictionary.csv")
 
@@ -178,9 +177,9 @@ def main():
 
         latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
 
-    process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
-    merge_historical_odds_data()
-    merge_future_odds_data()
+    # process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
+    # merge_historical_odds_data()
+    # merge_future_odds_data()
 
 
 if __name__ == "__main__":
