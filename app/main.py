@@ -58,8 +58,8 @@ def merge_historical_odds_data():
 
     fbref_historical_rpi_data = pd.read_csv("historical_rpi.csv")
 
-    print(f"fbduk data num matches: {fbduk_odds_data.shape[0]}")
-    print(f"fbref data num matches: {fbref_historical_rpi_data.shape[0]}")
+    print(f"fbduk input matches: {fbduk_odds_data.shape[0]}")
+    print(f"fbref imput matches: {fbref_historical_rpi_data.shape[0]}")
 
     team_name_dict = pd.read_csv("team_name_dictionary.csv")
 
@@ -83,6 +83,7 @@ def merge_historical_odds_data():
     ).rename({"Time_y": "Time"}, axis="columns")
 
     print(f"Merged historical odds size: {merged_df.shape[0]}")
+    print(f"{merged_df[merged_df["PSCH"].isna()].shape[0]} unmerged historical odds")
 
     merged_df.to_csv("historical_rpi_and_odds.csv", index=False)
 
