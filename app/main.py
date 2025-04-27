@@ -180,6 +180,7 @@ def main():
     merge_future_odds_data()
     process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
     merge_historical_odds_data()
+    # build_team_name_dictionary()
 
 
 if __name__ == "__main__":

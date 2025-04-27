@@ -73,9 +73,9 @@ class DataIngestion:
             .dropna(how="any", axis="index")
         )
 
-        played_fixtures_df = data_df.dropna(how="any", subset="Score", axis="index")[
-            columns
-        ]
+        played_fixtures_df = data_df.dropna(
+            how="any", subset=["Wk", "Score"], axis="index"
+        )[columns]
 
         played_fixtures_df[["FTHG", "FTAG"]] = played_fixtures_df["Score"].apply(
             lambda x: pd.Series(self._parse_score(x))
