@@ -16,5 +16,6 @@ wheels/
 
 # Custom files and folders
 DATA
+temp.py
 
 !team_name_dictionary.csv

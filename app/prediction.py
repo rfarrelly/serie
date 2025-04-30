@@ -6,6 +6,7 @@ from utils.odds_helpers import get_no_vig_odds_multiway
 
 # A value > 1 indicates potential value bet
 VALUE_THRESHOLD = 1.05  # Typically use >1.05 or >1.1 to account for model uncertainty
+FEATURE_COLUMNS = ["hRPI", "aRPI", "RPI_Diff"]
 
 
 def convert_odds_to_probability(odds):
@@ -47,10 +48,8 @@ valid_data["PSCA_fair_odds"] = 0
 
 valid_data = valid_data.apply(get_fair_odds_past, axis="columns")
 
-feature_columns = ["hRPI", "aRPI"]
-
 # Features and targets
-X = valid_data[feature_columns].values
+X = valid_data[FEATURE_COLUMNS].values
 y_home = valid_data["PSCH_fair_odds"].values
 y_draw = valid_data["PSCD_fair_odds"].values
 y_away = valid_data["PSCA_fair_odds"].values
@@ -111,7 +110,7 @@ future_matches["PSA_fair_prob"] = convert_odds_to_probability(
 )
 
 # Prepare features for prediction
-X_future = future_matches[feature_columns].values
+X_future = future_matches[FEATURE_COLUMNS].values
 
 # Predict odds
 future_matches["pred_PSH"] = home_model.predict(X_future)
