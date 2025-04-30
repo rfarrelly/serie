@@ -161,6 +161,5 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
                 }
             )
     candidates_df = pd.DataFrame(candidates)
-    print(f"Input Count: {input_count}")
-    print(f"Output Count: {candidates_df.shape[0]}")
+    print(f"Historical processor produced: {candidates_df.shape[0]} records")
     return candidates_df.sort_values("Date")
