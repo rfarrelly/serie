@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 from utils.odds_helpers import get_no_vig_odds_multiway
 
 # A value > 1 indicates potential value bet
-VALUE_THRESHOLD = 1.05  # Typically use >1.05 or >1.1 to account for model uncertainty
-FEATURE_COLUMNS = ["hRPI", "aRPI", "RPI_Diff"]
+VALUE_THRESHOLD = 1.1  # Typically use >1.05 or >1.1 to account for model uncertainty
+FEATURE_COLUMNS = ["hRPI", "aRPI"]
 
 
 def convert_odds_to_probability(odds):

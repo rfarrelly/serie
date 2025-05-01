@@ -148,36 +148,36 @@ def merge_future_odds_data():
 
 
 def main():
-    #     all_bet_candidates = []
+    all_bet_candidates = []
 
-    #     for league in Leagues:
+    for league in Leagues:
 
-    #         print(f"Processing {league.name} ({league.value['fbref_name']})")
+        print(f"Processing {league.name} ({league.value['fbref_name']})")
 
-    #         processor = LeagueProcessor(league, DEFAULT_CONFIG)
+        processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
-    #         if GET_DATA == "1":
-    #             processor.get_fbref_data()
-    #             processor.get_fbduk_data()
+        if GET_DATA == "1":
+            processor.get_fbref_data()
+            processor.get_fbduk_data()
 
-    #         bet_candidates = processor.generate_bet_candidates()
+        bet_candidates = processor.generate_bet_candidates()
 
-    #         if bet_candidates:
-    #             all_bet_candidates.extend(bet_candidates)
+        if bet_candidates:
+            all_bet_candidates.extend(bet_candidates)
 
-    #     if all_bet_candidates:
-    #         print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
-    #         latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
-    #             by="RPI_Diff"
-    #         )
+    if all_bet_candidates:
+        print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
+        latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
+            by="RPI_Diff"
+        )
 
-    #         latest_bet_candidates_df = latest_bet_candidates_df[
-    #             latest_bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
-    #         ]
+        latest_bet_candidates_df = latest_bet_candidates_df[
+            latest_bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
+        ]
 
-    #         latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
+        latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
 
-    #     merge_future_odds_data()
+    merge_future_odds_data()
     process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
     merge_historical_odds_data()
     # build_team_name_dictionary()
