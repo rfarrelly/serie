@@ -2,6 +2,70 @@ import pandas as pd
 import numpy as np
 
 
+def compute_ppg(df: pd.DataFrame) -> tuple[pd.DataFrame]:
+
+    df["HP"] = df.apply(
+        lambda x: 3 if x["FTHG"] > x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0,
+        axis="columns",
+    )
+
+    df["AP"] = df.apply(
+        lambda x: 3 if x["FTHG"] < x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0,
+        axis="columns",
+    )
+
+    home_points = df.pivot(index="Home", columns="Wk", values="HP")
+    away_points = df.pivot(index="Away", columns="Wk", values="AP")
+
+    home_ppg = home_points.T.expanding().mean().T.round(3).reset_index()
+    away_ppg = away_points.T.expanding().mean().T.round(3).reset_index()
+    total_ppg = (
+        home_points.combine_first(away_points)
+        .T.expanding()
+        .mean()
+        .T.round(3)
+        .reset_index()
+        .rename({"Home": "Team"}, axis="columns")
+    )
+
+    return home_ppg, away_ppg, total_ppg
+
+
+def compute_points_performance_index(
+    team: str,
+    df: pd.DataFrame,
+    hppg: pd.DataFrame,
+    appg: pd.DataFrame,
+    tppg: pd.DataFrame,
+) -> pd.DataFrame:
+    home_games = df[(df["Home"] == team)][["Wk", "Date", "Home", "Away"]]
+    away_games = df[(df["Away"] == team)][["Wk", "Date", "Home", "Away"]]
+
+    home_games = home_games.merge(appg, left_on="Away", right_on="Away")
+    away_games = away_games.merge(hppg, left_on="Home", right_on="Home")
+
+    combined = (
+        pd.concat([home_games, away_games]).reset_index(drop=True).sort_values("Date")
+    )
+
+    weeks_columns = [x for x in combined.columns if isinstance(x, int)]
+
+    combined[weeks_columns] = combined[weeks_columns].expanding().mean().round(3)
+
+    combined["OppPPG"] = np.diag(combined[weeks_columns])
+
+    combined["TeamPPG"] = tppg[tppg["Team"] == team][weeks_columns].values[0][
+        : combined.shape[0]
+    ]
+
+    # NOTE:
+    # OppPPG = average PPG of ALL opposition teams played at home OR away
+    # TeamPPG = combined home AND away PPG for the target team
+    combined["TeamPPI"] = round(combined["OppPPG"] * combined["TeamPPG"], 3)
+
+    return combined.drop(weeks_columns, axis=1)
+
+
 class TeamStats:
     """Class to analyze and store team statistics from match history data."""
 

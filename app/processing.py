@@ -1,6 +1,6 @@
 from config import Leagues, AppConfig, TODAY, END_DATE
 from ingestion import DataIngestion
-from stats import TeamStats, compute_rpi
+from stats import TeamStats, compute_rpi, compute_ppg, compute_points_performance_index
 from utils.datetime_helpers import filter_date_range
 import pandas as pd
 
@@ -42,12 +42,7 @@ class LeagueProcessor:
 
         fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
 
-        teams = set(self.played_matches_df["Home"]).union(
-            self.played_matches_df["Away"]
-        )
-        all_teams_stats = {
-            team: TeamStats(team, self.played_matches_df) for team in teams
-        }
+        home_ppg, away_ppg, total_ppg = compute_ppg(self.played_matches_df)
 
         candidates = []
 
@@ -60,13 +55,21 @@ class LeagueProcessor:
                 fixture.Away,
             )
 
-            home_rpi_latest = compute_rpi(all_teams_stats[home_team], all_teams_stats)[
-                "RPI"
-            ].iloc[-1]
+            home_rpi_latest = (
+                compute_points_performance_index(
+                    home_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
+                )
+                .tail(1)["TeamPPI"]
+                .values[0]
+            )
 
-            away_rpi_latest = compute_rpi(all_teams_stats[away_team], all_teams_stats)[
-                "RPI"
-            ].iloc[-1]
+            away_rpi_latest = (
+                compute_points_performance_index(
+                    away_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
+                )
+                .tail(1)["TeamPPI"]
+                .values[0]
+            )
 
             rpi_diff = round(abs(home_rpi_latest - away_rpi_latest), 2)
 
