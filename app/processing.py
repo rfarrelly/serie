@@ -113,10 +113,6 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
             team: compute_rpi(all_teams_stats[team], all_teams_stats) for team in teams
         }
 
-        # Shift RPI forward 1 place for analysis
-        for team, df in rpi_df_dict.items():
-            df["RPI"] = df["RPI"].shift(periods=1, fill_value=0)
-
         for fixture in fixtures.itertuples(index=False):
             week, date, time, league, home_team, away_team, fthg, ftag = (
                 fixture.Wk,
