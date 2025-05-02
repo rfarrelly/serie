@@ -1,6 +1,6 @@
 from config import Leagues, AppConfig, TODAY, END_DATE
 from ingestion import DataIngestion
-from stats import TeamStats, compute_rpi, compute_ppg, compute_points_performance_index
+from stats import compute_ppg, compute_points_performance_index
 from utils.datetime_helpers import filter_date_range
 import pandas as pd
 
@@ -59,7 +59,7 @@ class LeagueProcessor:
                 compute_points_performance_index(
                     home_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
                 )
-                .tail(1)["TeamPPI"]
+                .tail(1)["PPI"]
                 .values[0]
             )
 
@@ -67,11 +67,11 @@ class LeagueProcessor:
                 compute_points_performance_index(
                     away_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
                 )
-                .tail(1)["TeamPPI"]
+                .tail(1)["PPI"]
                 .values[0]
             )
 
-            rpi_diff = round(abs(home_rpi_latest - away_rpi_latest), 2)
+            ppi_diff = round(abs(home_rpi_latest - away_rpi_latest), 2)
 
             candidates.append(
                 {
@@ -81,9 +81,9 @@ class LeagueProcessor:
                     "League": self.league_name,
                     "Home": home_team,
                     "Away": away_team,
-                    "hRPI": home_rpi_latest,
-                    "aRPI": away_rpi_latest,
-                    "RPI_Diff": rpi_diff,
+                    "hPPI": home_rpi_latest,
+                    "aPPI": away_rpi_latest,
+                    "PPI_Diff": ppi_diff,
                 }
             )
 
@@ -100,65 +100,48 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
         if "unplayed" not in str(file)
     ]
     candidates = []
-    input_count = 0
 
     for file in files:
 
         fixtures = pd.read_csv(file, dtype={"Wk": int}).sort_values("Date")
 
-        input_count += fixtures.shape[0]
-
         teams = set(fixtures["Home"]).union(fixtures["Away"])
 
-        all_teams_stats = {team: TeamStats(team, fixtures) for team in teams}
+        hppg, appg, tppg = compute_ppg(fixtures)
 
-        rpi_df_dict = {
-            team: compute_rpi(all_teams_stats[team], all_teams_stats) for team in teams
-        }
-
-        for fixture in fixtures.itertuples(index=False):
-            week, date, time, league, home_team, away_team, fthg, ftag = (
-                fixture.Wk,
-                fixture.Date,
-                fixture.Time,
-                fixture.League,
-                fixture.Home,
-                fixture.Away,
-                fixture.FTHG,
-                fixture.FTAG,
-            )
-
-            home_rpi_df = rpi_df_dict[home_team]
-            away_rpi_df = rpi_df_dict[away_team]
-
-            home_rpi_df = home_rpi_df[
-                (home_rpi_df["Team"] == away_team) & (home_rpi_df["Date"] == date)
+        ppi_df = pd.concat(
+            [
+                compute_points_performance_index(team, fixtures, hppg, appg, tppg)
+                for team in teams
             ]
-            away_rpi_df = away_rpi_df[
-                (away_rpi_df["Team"] == home_team) & (away_rpi_df["Date"] == date)
-            ]
+        )
 
-            home_rpi = home_rpi_df["RPI"].values[0]
-            away_rpi = away_rpi_df["RPI"].values[0]
+        pivot_cols = ["OppPPG", "PPG", "PPI"]
+        ppi_df_wide = ppi_df.pivot_table(
+            index=[
+                "Wk",
+                "League",
+                "Day",
+                "Date",
+                "Time",
+                "Home",
+                "Away",
+                "FTHG",
+                "FTAG",
+                "HP",
+                "AP",
+            ],
+            columns="TeamType",
+            values=pivot_cols,
+        )
 
-            rpi_diff = round(abs(home_rpi - away_rpi), 2)
+        ppi_df_wide.columns = [f"{side}{col}" for col, side in ppi_df_wide.columns]
+        ppi_final = ppi_df_wide.reset_index()
 
-            candidates.append(
-                {
-                    "Wk": week,
-                    "Date": date,
-                    "Time": time,
-                    "League": league,
-                    "Home": home_team,
-                    "Away": away_team,
-                    "FTHG": fthg,
-                    "FTAG": ftag,
-                    "hRPI": float(home_rpi),
-                    "aRPI": float(away_rpi),
-                    "RPI_Diff": rpi_diff,
-                    "FTR": "H" if fthg > ftag else "D" if fthg == ftag else "A",
-                }
-            )
-    candidates_df = pd.DataFrame(candidates)
-    print(f"Historical processor produced: {candidates_df.shape[0]} records")
+        ppi_final["PPI_Diff"] = round(abs(ppi_final["hPPI"] - ppi_final["aPPI"]), 2)
+
+        candidates.append(ppi_final)
+
+    candidates_df = pd.concat(candidates)
+    print(f"Historical processor processed: {candidates_df.shape[0]} records")
     return candidates_df.sort_values("Date")

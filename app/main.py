@@ -134,14 +134,14 @@ def merge_future_odds_data():
         "League",
         "Home",
         "Away",
-        "hRPI",
-        "aRPI",
-        "RPI_Diff",
+        "hPPI",
+        "aPPI",
+        "PPI_Diff",
         "PSH",
         "PSD",
         "PSA",
     ]
-    merged_df = merged_df[columns]
+    merged_df = merged_df[columns].sort_values(by="PPI_Diff")
     print(f"Merged future odds size: {merged_df.shape[0]}")
 
     merged_df.to_csv("latest_rpi_and_odds.csv", index=False)
@@ -168,11 +168,11 @@ def main():
     if all_bet_candidates:
         print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
         latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
-            by="RPI_Diff"
+            by="PPI_Diff"
         )
 
         latest_bet_candidates_df = latest_bet_candidates_df[
-            latest_bet_candidates_df["RPI_Diff"] <= DEFAULT_CONFIG.rpi_diff_threshold
+            latest_bet_candidates_df["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
         ]
 
         latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)

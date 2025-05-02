@@ -131,7 +131,7 @@ class AppConfig:
     fbduk_base_url_main: str = env_values.get("FBDUK_BASE_URL_MAIN")
     fbduk_base_url_extra: str = env_values.get("FBDUK_BASE_URL_EXTRA")
     current_season: str = env_values.get("CURRENT_SEASON")
-    rpi_diff_threshold: float = float(env_values.get("RPI_DIFF_THRESHOLD"))
+    ppi_diff_threshold: float = float(env_values.get("PPI_DIFF_THRESHOLD"))
     data_dir: Path = Path(env_values.get("DATA_DIR"))
 
     @property
