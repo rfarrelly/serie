@@ -38,9 +38,8 @@ def compute_points_performance_index(
     appg: pd.DataFrame,
     tppg: pd.DataFrame,
 ) -> pd.DataFrame:
-    home_games = df[(df["Home"] == team)][["Wk", "Date", "Home", "Away"]]
-    away_games = df[(df["Away"] == team)][["Wk", "Date", "Home", "Away"]]
-
+    home_games = df[(df["Home"] == team)]
+    away_games = df[(df["Away"] == team)]
     home_games = home_games.merge(appg, left_on="Away", right_on="Away")
     away_games = away_games.merge(hppg, left_on="Home", right_on="Home")
 
