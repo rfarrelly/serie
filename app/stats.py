@@ -60,8 +60,6 @@ def compute_points_performance_index(
     # OppPPG = average PPG of ALL opposition teams played at home OR away
     # TeamPPG = combined home AND away PPG for the target team
     combined["PPI"] = round(combined["OppPPG"] * combined["PPG"], 3)
-
-    # combined["Team"] = team
     combined["TeamType"] = combined.apply(
         lambda x: "h" if team == x["Home"] else "a", axis=1
     )
