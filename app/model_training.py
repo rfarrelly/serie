@@ -19,8 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-VALUE_THRESHOLD = 1.1  # Typically use >1.05 or >1.1 to account for model uncertainty
-FEATURE_COLUMNS = ["hPPI", "aPPI", "PPI_Diff"]
+FEATURE_COLUMNS = ["aOppPPG", "hOppPPG", "aPPG", "hPPG", "hPPI", "aPPI", "PPI_Diff"]
 RANDOM_STATE = 42
 DATA_DIR = Path("data")
 MODEL_DIR = Path("models")
@@ -68,17 +67,10 @@ class BettingModel:
         Returns:
             List of fair odds with no vig
         """
-        try:
-            from utils.odds_helpers import get_no_vig_odds_multiway
 
-            return get_no_vig_odds_multiway(odds_list)
-        except ImportError:
-            # Fallback implementation if the utils module is not available
-            probs = [1 / odds for odds in odds_list]
-            total_prob = sum(probs)
-            fair_probs = [prob / total_prob for prob in probs]
-            fair_odds = [1 / prob for prob in fair_probs]
-            return fair_odds
+        from utils.odds_helpers import get_no_vig_odds_multiway
+
+        return get_no_vig_odds_multiway(odds_list)
 
     def process_historical_data(self, file_path: str) -> pd.DataFrame:
         """Load and preprocess historical data.
