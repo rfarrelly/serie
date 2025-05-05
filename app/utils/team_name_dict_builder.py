@@ -1,7 +1,7 @@
-import os
 import csv
 import difflib
-from typing import Dict, List, Tuple, Optional
+import os
+from typing import Dict, List, Optional, Tuple
 
 
 class TeamNameMapper:

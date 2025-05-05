@@ -1,13 +1,14 @@
+import time
+
 import pandas as pd
+from config import AppConfig, Leagues
 from curl_cffi import requests
-from config import Leagues, AppConfig
+from utils.datetime_helpers import format_date
 from utils.url_helpers import (
-    fbref_url_builder,
     fbduk_extra_url_builder,
     fbduk_main_url_builder,
+    fbref_url_builder,
 )
-from utils.datetime_helpers import format_date
-import time
 
 
 class DataIngestion:

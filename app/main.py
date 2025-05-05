@@ -1,9 +1,9 @@
-import pandas as pd
 import numpy as np
-from config import Leagues, DEFAULT_CONFIG, TODAY, END_DATE, GET_DATA
+import pandas as pd
+from config import DEFAULT_CONFIG, END_DATE, GET_DATA, TODAY, Leagues
 from processing import LeagueProcessor, process_historical_data
-from utils.team_name_dict_builder import TeamNameManagerCLI
 from utils.datetime_helpers import format_date
+from utils.team_name_dict_builder import TeamNameManagerCLI
 
 
 def build_team_name_dictionary():
