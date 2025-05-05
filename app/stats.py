@@ -3,7 +3,6 @@ import numpy as np
 
 
 def compute_ppg(df: pd.DataFrame) -> tuple[pd.DataFrame]:
-
     df["HP"] = df.apply(
         lambda x: 3 if x["FTHG"] > x["FTAG"] else 1 if x["FTHG"] == x["FTAG"] else 0,
         axis="columns",

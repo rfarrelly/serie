@@ -84,7 +84,7 @@ def merge_historical_odds_data():
     ).rename({"Time_y": "Time", "Season_x": "Season"}, axis="columns")
 
     print(f"Merged historical odds size: {merged_df.shape[0]}")
-    print(f"{merged_df[merged_df["PSCH"].isna()].shape[0]} unmerged historical odds")
+    print(f"{merged_df[merged_df['PSCH'].isna()].shape[0]} unmerged historical odds")
 
     merged_df.to_csv("historical_rpi_and_odds.csv", index=False)
 
@@ -151,7 +151,6 @@ def main():
     all_bet_candidates = []
 
     for league in Leagues:
-
         print(f"Processing {league.name} ({league.value['fbref_name']})")
 
         processor = LeagueProcessor(league, DEFAULT_CONFIG)

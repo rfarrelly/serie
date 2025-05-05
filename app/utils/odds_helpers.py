@@ -11,7 +11,6 @@ def get_no_vig_odds_multiway(odds: list):
 
     fair_odds = list()
     while current_error > max_error:
-
         f = -1 - target_overround
         for o in odds:
             f += (1 / o) ** c

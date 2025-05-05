@@ -39,7 +39,6 @@ class LeagueProcessor:
         )
 
     def generate_bet_candidates(self) -> dict:
-
         fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
 
         home_ppg, away_ppg, total_ppg = compute_ppg(self.played_matches_df)
@@ -102,7 +101,6 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
     candidates = []
 
     for file in files:
-
         fixtures = pd.read_csv(file, dtype={"Wk": int}).sort_values("Date")
 
         teams = set(fixtures["Home"]).union(fixtures["Away"])

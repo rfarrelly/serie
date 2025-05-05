@@ -299,7 +299,7 @@ class TeamNameManagerCLI:
             elif interactive:
                 print(f"Found similar teams for '{team_name}' from {source}:")
                 for i, (match_name, similarity, mapping) in enumerate(partial_matches):
-                    print(f"  {i+1}. '{match_name}' (similarity: {similarity:.2f})")
+                    print(f"  {i + 1}. '{match_name}' (similarity: {similarity:.2f})")
                     for src, name in mapping.items():
                         if name:  # Skip empty values
                             print(f"     - {src}: {name}")
