@@ -79,9 +79,9 @@ def merge_historical_odds_data():
             on=["Date", "Home", "Away"],
             how="left",
         )
-        .drop(["Time_x", "Season"], axis="columns")
+        .drop(["Time_x", "Season_y"], axis="columns")
         .sort_values("Date")
-    ).rename({"Time_y": "Time"}, axis="columns")
+    ).rename({"Time_y": "Time", "Season_x": "Season"}, axis="columns")
 
     print(f"Merged historical odds size: {merged_df.shape[0]}")
     print(f"{merged_df[merged_df["PSCH"].isna()].shape[0]} unmerged historical odds")

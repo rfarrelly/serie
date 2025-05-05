@@ -121,6 +121,7 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
             index=[
                 "Wk",
                 "League",
+                "Season",
                 "Day",
                 "Date",
                 "Time",

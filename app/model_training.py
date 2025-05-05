@@ -259,7 +259,7 @@ class BettingModel:
 
 def main():
     """Main function to execute the betting model pipeline."""
-    # logger.info("Starting betting model training and prediction pipeline")
+    logger.info("Starting betting model training and prediction pipeline")
 
     # # Initialize model
     model = BettingModel(feature_columns=FEATURE_COLUMNS)
