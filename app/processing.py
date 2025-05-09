@@ -54,23 +54,18 @@ class LeagueProcessor:
                 fixture.Away,
             )
 
-            home_rpi_latest = (
-                compute_points_performance_index(
-                    home_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
-                )
-                .tail(1)["PPI"]
-                .values[0]
+            home_ppi_df = compute_points_performance_index(
+                home_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
             )
 
-            away_rpi_latest = (
-                compute_points_performance_index(
-                    away_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
-                )
-                .tail(1)["PPI"]
-                .values[0]
+            away_ppi_df = compute_points_performance_index(
+                away_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
             )
 
-            ppi_diff = round(abs(home_rpi_latest - away_rpi_latest), 2)
+            home_ppi_latest = home_ppi_df.tail(1)["PPI"].values[0]
+            away_ppi_latest = away_ppi_df.tail(1)["PPI"].values[0]
+
+            ppi_diff = round(abs(home_ppi_latest - away_ppi_latest), 2)
 
             candidates.append(
                 {
@@ -80,8 +75,12 @@ class LeagueProcessor:
                     "League": self.league_name,
                     "Home": home_team,
                     "Away": away_team,
-                    "hPPI": home_rpi_latest,
-                    "aPPI": away_rpi_latest,
+                    "aOppPPG": away_ppi_df.tail(1)["OppPPG"].values[0],
+                    "hOppPPG": home_ppi_df.tail(1)["OppPPG"].values[0],
+                    "aPPG": away_ppi_df.tail(1)["PPG"].values[0],
+                    "hPPG": home_ppi_df.tail(1)["PPG"].values[0],
+                    "hPPI": home_ppi_latest,
+                    "aPPI": away_ppi_latest,
                     "PPI_Diff": ppi_diff,
                 }
             )
@@ -127,8 +126,6 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
                 "Away",
                 "FTHG",
                 "FTAG",
-                "HP",
-                "AP",
             ],
             columns="TeamType",
             values=pivot_cols,

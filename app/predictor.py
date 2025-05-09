@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Constants
 MODEL_DIR = Path("models")
 RESULTS_DIR = Path("results")
-FEATURE_COLUMNS = ["hPPI", "aPPI", "PPI_Diff"]
+FEATURE_COLUMNS = ["aOppPPG", "hOppPPG", "aPPG", "hPPG", "hPPI", "aPPI", "PPI_Diff"]
 VALUE_THRESHOLD = 1.15
 
 
@@ -212,14 +212,16 @@ class BettingPredictor:
         # Log found value bets
         for outcome, bets in value_bets.items():
             if outcome != "all":
-                logger.info(f"\n{outcome.capitalize()} Value Bets ({len(bets)}):")
                 if not bets.empty:
+                    logger.info(f"\n{outcome.capitalize()} Value Bets ({len(bets)}):")
                     odds_col = f"PS{outcome[0].upper()}"
                     pred_col = f"pred_PS{outcome[0].upper()}"
                     value_col = f"PS{outcome[0].upper()}_value"
                     display_cols = ["Home", "Away", odds_col, pred_col, value_col]
                     display_cols = [col for col in display_cols if col in bets.columns]
-                    logger.info(bets[display_cols])
+                    logger.info(f"\n{bets[display_cols]}")
+                else:
+                    logger.info(f"\r\n No {outcome.capitalize()} bets")
 
         return value_bets
 
