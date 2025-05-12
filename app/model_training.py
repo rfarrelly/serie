@@ -96,7 +96,6 @@ class BettingModel:
         df = df[df["Season"].isin(season)]
         logger.info(f"Data size after filtering: {df.shape[0]}")
         logger.info(f"Using seasons: {df['Season'].unique()} for training")
-        breakpoint()
 
         # Calculate fair odds
         df[["PSCH_fair_odds", "PSCD_fair_odds", "PSCA_fair_odds"]] = df.apply(
