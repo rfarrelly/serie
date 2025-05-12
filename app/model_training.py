@@ -72,7 +72,9 @@ class BettingModel:
 
         return get_no_vig_odds_multiway(odds_list)
 
-    def process_historical_data(self, file_path: str) -> pd.DataFrame:
+    def process_historical_data(
+        self, file_path: str, season: list[str]
+    ) -> pd.DataFrame:
         """Load and preprocess historical data.
 
         Args:
@@ -91,7 +93,10 @@ class BettingModel:
 
         # Filter out matches with insufficient data
         df = df[df["Wk"] >= 10].copy()
+        df = df[df["Season"].isin(season)]
         logger.info(f"Data size after filtering: {df.shape[0]}")
+        logger.info(f"Using seasons: {df['Season'].unique()} for training")
+        breakpoint()
 
         # Calculate fair odds
         df[["PSCH_fair_odds", "PSCD_fair_odds", "PSCA_fair_odds"]] = df.apply(
@@ -258,7 +263,9 @@ def main():
     model = BettingModel(feature_columns=FEATURE_COLUMNS)
 
     # # Process historical data
-    historical_data = model.process_historical_data("historical_rpi_and_odds.csv")
+    historical_data = model.process_historical_data(
+        "historical_rpi_and_odds.csv", ["2022-2023", "2023-2024"]
+    )
 
     # Train models
     model.train_models(historical_data, tune_hyperparams=True)
