@@ -119,6 +119,10 @@ class DataIngestion:
             columns={"HomeTeam": "Home", "AwayTeam": "Away"}
         )
 
+        if league_name in "Ekstraklasa":
+            data_df["Home"] = data_df["Home"].replace("Gornik Zabrze", "Gornik Z.")
+            data_df["Away"] = data_df["Away"].replace("Gornik Zabrze", "Gornik Z.")
+
         if "Season" in data_df.columns:
             data_df = data_df[data_df["Season"] == season_extra_format]
 
