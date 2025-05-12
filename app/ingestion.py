@@ -102,16 +102,17 @@ class DataIngestion:
 
     def get_fbduk_data(self, league: Leagues, season: str):
         league_name = league.fbref_name
+        odds_columns = ["PSCH", "PSCD", "PSCA"]
 
         if league.is_extra:
             url = fbduk_extra_url_builder(self.config.fbduk_base_url_extra, league)
-            columns = ["Date", "Time", "Season", "Home", "Away", "PSCH", "PSCD", "PSCA"]
+            columns = ["Date", "Time", "Season", "Home", "Away"] + odds_columns
             season_extra_format = season.replace("-", "/")
         else:
             url = fbduk_main_url_builder(
                 self.config.fbduk_base_url_main, league, season
             )
-            columns = ["Date", "Time", "HomeTeam", "AwayTeam", "PSCH", "PSCD", "PSCA"]
+            columns = ["Date", "Time", "HomeTeam", "AwayTeam"] + odds_columns
 
         dir_path = self.config.get_fbduk_league_dir(league_name)
 
