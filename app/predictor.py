@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 # Constants
 MODEL_DIR = Path("models")
 RESULTS_DIR = Path("results")
-FEATURE_COLUMNS = ["aOppPPG", "hOppPPG", "aPPG", "hPPG", "hPPI", "aPPI", "PPI_Diff"]
+FEATURE_COLUMNS = ["hPPI", "aPPI", "PPI_Diff"]
 VALUE_THRESHOLD = 1.15
 
 

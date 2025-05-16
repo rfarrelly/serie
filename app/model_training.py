@@ -19,7 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Constants
-FEATURE_COLUMNS = ["aOppPPG", "hOppPPG", "aPPG", "hPPG", "hPPI", "aPPI", "PPI_Diff"]
+FEATURE_COLUMNS = ["hPPI", "aPPI", "PPI_Diff"]
 RANDOM_STATE = 42
 DATA_DIR = Path("data")
 MODEL_DIR = Path("models")

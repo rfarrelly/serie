@@ -106,12 +106,24 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
 
         hppg, appg, tppg = compute_ppg(fixtures)
 
-        ppi_df = pd.concat(
-            [
-                compute_points_performance_index(team, fixtures, hppg, appg, tppg)
-                for team in teams
-            ]
-        )
+        # ppi_df = pd.concat(
+        #     compute_points_performance_index(team, fixtures, hppg, appg, tppg)
+        #     for team in teams
+        # )
+
+        ppi_df_list = [
+            compute_points_performance_index(
+                team, fixtures, hppg, appg, tppg
+            ).sort_values("Date")
+            for team in teams
+        ]
+
+        for df in ppi_df_list:
+            df[["OppPPG", "PPG", "PPI"]] = df[["OppPPG", "PPG", "PPI"]].shift(
+                periods=1, fill_value=0
+            )
+
+        ppi_df = pd.concat(ppi_df_list)
 
         pivot_cols = ["OppPPG", "PPG", "PPI"]
         ppi_df_wide = ppi_df.pivot_table(
