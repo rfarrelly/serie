@@ -91,7 +91,7 @@ def merge_historical_odds_data():
 
 def merge_future_odds_data():
     latest_rpi = pd.read_csv("latest_bet_candidates.csv")
-    fbduk_odds_data = pd.read_csv("fixtures.csv").rename(
+    fbduk_main_odds_data = pd.read_csv("fixtures.csv").rename(
         {"HomeTeam": "Home", "AwayTeam": "Away"}, axis="columns"
     )[
         [
@@ -104,6 +104,22 @@ def merge_future_odds_data():
             "PSA",
         ]
     ]
+    fbduk_extra_odds_data = pd.read_csv("new_league_fixtures.csv").rename(
+        {"HomeTeam": "Home", "AwayTeam": "Away"}, axis="columns"
+    )[
+        [
+            "Date",
+            "Time",
+            "Home",
+            "Away",
+            "PSH",
+            "PSD",
+            "PSA",
+        ]
+    ]
+
+    fbduk_odds_data = pd.concat([fbduk_main_odds_data, fbduk_extra_odds_data])
+
     fbduk_odds_data = format_date(fbduk_odds_data)
 
     team_name_dict = pd.read_csv("team_name_dictionary.csv")
