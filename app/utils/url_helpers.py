@@ -6,8 +6,9 @@ def fbref_url_builder(base_url: str, league: Leagues, season: str = None) -> str
 
 
 def fbduk_main_url_builder(base_url: str, league: Leagues, season: str) -> str:
-    season = season[2:-2].replace("-", "")
-    return f"{base_url}/{season}/{league.fbduk_id}.csv"
+    season_year_max = season[2:-5]
+    season_year_min = season[7:]
+    return f"{base_url}/{season_year_max + season_year_min}/{league.fbduk_id}.csv"
 
 
 def fbduk_extra_url_builder(base_url: str, league: Leagues) -> str:
