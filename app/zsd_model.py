@@ -18,6 +18,12 @@ N = len(teams)
 
 played_matches = data[:206].copy()
 
+# Constants
+avg_home_goals = played_matches["FTHG"].mean()
+std_home_goals = played_matches["FTHG"].std()
+avg_away_goals = played_matches["FTAG"].mean()
+std_away_goals = played_matches["FTAG"].std()
+
 
 def get_params_vec():
     return np.zeros(2 * N + 2)
@@ -39,12 +45,6 @@ def compute_sse_total(params):
     hra = played_matches["Away"].map(lambda team: home_ratings[team_index[team]]).values
     arh = played_matches["Home"].map(lambda team: away_ratings[team_index[team]]).values
     ara = played_matches["Away"].map(lambda team: away_ratings[team_index[team]]).values
-
-    # Constants
-    avg_home_goals = played_matches["FTHG"].mean()
-    std_home_goals = played_matches["FTHG"].std()
-    avg_away_goals = played_matches["FTAG"].mean()
-    std_away_goals = played_matches["FTAG"].std()
 
     # Home estimation
     param_h = home_adj + hrh - hra
@@ -86,12 +86,6 @@ hrh = played_matches["Home"].map(lambda team: home_ratings[team_index[team]]).va
 hra = played_matches["Away"].map(lambda team: home_ratings[team_index[team]]).values
 arh = played_matches["Home"].map(lambda team: away_ratings[team_index[team]]).values
 ara = played_matches["Away"].map(lambda team: away_ratings[team_index[team]]).values
-
-# Recalculate constants
-avg_home_goals = played_matches["FTHG"].mean()
-std_home_goals = played_matches["FTHG"].std()
-avg_away_goals = played_matches["FTAG"].mean()
-std_away_goals = played_matches["FTAG"].std()
 
 # Compute final estimated goals using optimized parameters
 param_h = opt_home_adj + hrh - hra
@@ -211,14 +205,14 @@ probs = outcome_probabilities(spread_home, spread_away, result["model_error"])
 for outcome, prob in probs.items():
     print(f"{outcome}: {prob:.2%}")
 
-# Poisson
+# Basic Poisson
+max_goals = 15
 
 # Set Poisson means for home and away
 lambda_home = result["home_goals_est"]
 lambda_away = result["away_goals_est"]
 
 # Define goal range (0 to 6 goals)
-max_goals = 15
 home_goals = np.arange(0, max_goals + 1)
 away_goals = np.arange(0, max_goals + 1)
 
@@ -227,12 +221,12 @@ home_probs = poisson.pmf(home_goals, lambda_home)
 away_probs = poisson.pmf(away_goals, lambda_away)
 
 # Compute joint probabilities matrix
-prob_matrix = np.outer(home_probs, away_probs)
+basic_prob_matrix = np.outer(home_probs, away_probs)
 
 # Plot heatmap
 # plt.figure(figsize=(8, 6))
 # sns.heatmap(
-#     prob_matrix,
+#     hypo_prob_matrix,
 #     annot=True,
 #     fmt=".3f",
 #     cmap="Reds",
@@ -245,9 +239,139 @@ prob_matrix = np.outer(home_probs, away_probs)
 # plt.ylabel("Home Goals")
 # plt.show()
 
-home_win_prob = np.sum(np.tril(prob_matrix, -1))  # Lower triangle, excluding diagonal
-draw_prob = np.sum(np.diag(prob_matrix))  # Diagonal
-away_win_prob = np.sum(np.triu(prob_matrix, 1))  # Upper triangle, excluding diagonal
+home_win_prob = np.sum(
+    np.tril(basic_prob_matrix, -1)
+)  # Lower triangle, excluding diagonal
+draw_prob = np.sum(np.diag(basic_prob_matrix))  # Diagonal
+away_win_prob = np.sum(
+    np.triu(basic_prob_matrix, 1)
+)  # Upper triangle, excluding diagonal
+
+print(f"Home Win Probability: {home_win_prob:.4f}")
+print(f"Draw Probability:     {draw_prob:.4f}")
+print(f"Away Win Probability: {away_win_prob:.4f}")
+
+##########################################################################
+### Hypothetical Expected Goal Frequencies ###
+# Define goal range (0 to 6 goals)
+home_goals = np.arange(0, max_goals + 1)
+away_goals = np.arange(0, max_goals + 1)
+
+# Compute Poisson PMFs
+home_probs = poisson.pmf(home_goals, avg_home_goals)
+away_probs = poisson.pmf(away_goals, avg_away_goals)
+
+# Compute joint probabilities matrix
+hypo_prob_matrix = np.outer(home_probs, away_probs)
+
+# Plot heatmap
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(
+#     hypo_prob_matrix,
+#     annot=True,
+#     fmt=".3f",
+#     cmap="Reds",
+#     xticklabels=away_goals,
+#     yticklabels=home_goals,
+# )
+
+# plt.title("Home vs. Away Goal Probability Heatmap")
+# plt.xlabel("Away Goals")
+# plt.ylabel("Home Goals")
+# plt.show()
+
+##########################################################################
+# Actual Observed Goal Frequencies
+
+# Get frequencies
+home_goal_counts = data["FTHG"].value_counts().sort_index()
+away_goal_counts = data["FTAG"].value_counts().sort_index()
+
+# Get percentages
+home_goal_percentages = data["FTHG"].value_counts(normalize=True).sort_index()
+away_goal_percentages = data["FTAG"].value_counts(normalize=True).sort_index()
+
+# Combine into a DataFrame
+goal_stats = pd.DataFrame(
+    index=np.arange(0, max_goals + 1),
+    data={
+        "Home Frequency": home_goal_counts,
+        "Home Percentage": home_goal_percentages.round(3),
+        "Away Frequency": away_goal_counts,
+        "Away Percentage": away_goal_percentages.round(3),
+    },
+).fillna(0)
+
+# Observed Poisson matrix using actual observed goal frequencies
+observed_prob_matrix = np.outer(
+    goal_stats["Home Percentage"], goal_stats["Away Percentage"]
+)
+
+# Plot heatmap
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(
+#     observed_prob_matrix,
+#     annot=True,
+#     fmt=".3f",
+#     cmap="Reds",
+#     xticklabels=away_goals,
+#     yticklabels=home_goals,
+# )
+
+# plt.title("Home vs. Away Goal Probability Heatmap")
+# plt.xlabel("Away Goals")
+# plt.ylabel("Home Goals")
+# plt.show()
+
+# Create adjustments for zero-inflation
+
+# Divide theoretical poisson probs by the basic poisson probs
+
+adj_poisson_matrix = pd.DataFrame(observed_prob_matrix) / pd.DataFrame(hypo_prob_matrix)
+
+# Plot heatmap
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(
+#     adj_poisson_matrix,
+#     annot=True,
+#     fmt=".3f",
+#     cmap="Reds",
+#     xticklabels=away_goals,
+#     yticklabels=home_goals,
+# )
+
+# plt.title("Home vs. Away Goal Probability Heatmap")
+# plt.xlabel("Away Goals")
+# plt.ylabel("Home Goals")
+# plt.show()
+
+# ZIP Adjusted
+
+poisson_adj_prob_matrix = basic_prob_matrix * adj_poisson_matrix
+
+# Plot heatmap
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(
+#     poisson_adj_prob_matrix,
+#     annot=True,
+#     fmt=".3f",
+#     cmap="Reds",
+#     xticklabels=away_goals,
+#     yticklabels=home_goals,
+# )
+
+# plt.title("Home vs. Away Goal Probability Heatmap")
+# plt.xlabel("Away Goals")
+# plt.ylabel("Home Goals")
+# plt.show()
+
+home_win_prob = np.sum(
+    np.tril(poisson_adj_prob_matrix, -1)
+)  # Lower triangle, excluding diagonal
+draw_prob = np.sum(np.diag(poisson_adj_prob_matrix))  # Diagonal
+away_win_prob = np.sum(
+    np.triu(poisson_adj_prob_matrix, 1)
+)  # Upper triangle, excluding diagonal
 
 print(f"Home Win Probability: {home_win_prob:.4f}")
 print(f"Draw Probability:     {draw_prob:.4f}")
