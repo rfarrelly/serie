@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import statsmodels.api as sm
 from scipy.optimize import minimize
-from scipy.stats import norm
+from scipy.stats import norm, poisson
 from utils.datetime_helpers import format_date
 
 data = pd.read_csv("zsd_poisson_test_data.csv")
@@ -209,3 +210,45 @@ print(f"Away Spread: {spread_away:.2f}")
 probs = outcome_probabilities(spread_home, spread_away, result["model_error"])
 for outcome, prob in probs.items():
     print(f"{outcome}: {prob:.2%}")
+
+# Poisson
+
+# Set Poisson means for home and away
+lambda_home = result["home_goals_est"]
+lambda_away = result["away_goals_est"]
+
+# Define goal range (0 to 6 goals)
+max_goals = 15
+home_goals = np.arange(0, max_goals + 1)
+away_goals = np.arange(0, max_goals + 1)
+
+# Compute Poisson PMFs
+home_probs = poisson.pmf(home_goals, lambda_home)
+away_probs = poisson.pmf(away_goals, lambda_away)
+
+# Compute joint probabilities matrix
+prob_matrix = np.outer(home_probs, away_probs)
+
+# Plot heatmap
+# plt.figure(figsize=(8, 6))
+# sns.heatmap(
+#     prob_matrix,
+#     annot=True,
+#     fmt=".3f",
+#     cmap="Reds",
+#     xticklabels=away_goals,
+#     yticklabels=home_goals,
+# )
+
+# plt.title("Home vs. Away Goal Probability Heatmap")
+# plt.xlabel("Away Goals")
+# plt.ylabel("Home Goals")
+# plt.show()
+
+home_win_prob = np.sum(np.tril(prob_matrix, -1))  # Lower triangle, excluding diagonal
+draw_prob = np.sum(np.diag(prob_matrix))  # Diagonal
+away_win_prob = np.sum(np.triu(prob_matrix, 1))  # Upper triangle, excluding diagonal
+
+print(f"Home Win Probability: {home_win_prob:.4f}")
+print(f"Draw Probability:     {draw_prob:.4f}")
+print(f"Away Win Probability: {away_win_prob:.4f}")
