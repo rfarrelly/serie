@@ -1,8 +1,10 @@
+import numpy as np
 import pandas as pd
 from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
 from stats import compute_points_performance_index, compute_ppg
 from utils.datetime_helpers import filter_date_range
+from zsd_poisson_model import ZSDPoissonModel
 
 
 class LeagueProcessor:
@@ -88,6 +90,63 @@ class LeagueProcessor:
         candidates_df = pd.DataFrame(candidates)
         return candidates_df.to_dict(orient="records")
 
+    def get_zsd_poisson(self):
+        fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
+
+        model = ZSDPoissonModel(played_matches=self.played_matches_df)
+
+        results = []
+
+        for fixture in fixtures.itertuples(index=False):
+            week, date, time, home_team, away_team = (
+                fixture.Wk,
+                fixture.Date,
+                fixture.Time,
+                fixture.Home,
+                fixture.Away,
+            )
+
+            # Core predictions from the model
+            result = model.predict_match_mov(home_team, away_team)
+
+            # Raw goal estimates
+            lambda_home = result["home_goals_est"]
+            lambda_away = result["away_goals_est"]
+
+            # Get outcome probabilities from logistic-MOV model
+            probs = model.outcome_probabilities(
+                lambda_home - lambda_away, lambda_away - lambda_home
+            )
+            result |= probs
+
+            # Generate Poisson and ZIP-adjusted matrices
+            poisson_matrix = model.poisson_prob_matrix(
+                lambda_home, lambda_away, max_goals=10
+            )
+            zip_adj_matrix = model.zip_adjustment_matrix(max_goals=10)
+            zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
+
+            # Add fixture metadata
+            result["Wk"] = week
+            result["Date"] = date
+            result["Time"] = time
+            result["Home"] = home_team
+            result["Away"] = away_team
+
+            # Collapse to outcome probabilities
+            result["P_Poisson(Home Win)"] = np.tril(poisson_matrix, -1).sum()
+            result["P_Poisson(Draw)"] = np.trace(poisson_matrix)
+            result["P_Poisson(Away Win)"] = np.triu(poisson_matrix, 1).sum()
+
+            result["P_ZIP(Home Win)"] = np.tril(zip_poisson_matrix, -1).sum()
+            result["P_ZIP(Draw)"] = np.trace(zip_poisson_matrix)
+            result["P_ZIP(Away Win)"] = np.triu(zip_poisson_matrix, 1).sum()
+
+            results.append(result)
+
+        preds_df = pd.DataFrame(results)
+        return preds_df.to_dict(orient="records")
+
 
 def process_historical_data(config: AppConfig) -> pd.DataFrame:
     print("Processing historical data")
@@ -105,11 +164,6 @@ def process_historical_data(config: AppConfig) -> pd.DataFrame:
         teams = set(fixtures["Home"]).union(fixtures["Away"])
 
         hppg, appg, tppg = compute_ppg(fixtures)
-
-        # ppi_df = pd.concat(
-        #     compute_points_performance_index(team, fixtures, hppg, appg, tppg)
-        #     for team in teams
-        # )
 
         ppi_df_list = [
             compute_points_performance_index(

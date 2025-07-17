@@ -3,26 +3,24 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy.optimize import minimize
 from scipy.stats import norm, poisson
-from utils.datetime_helpers import format_date
 
 
 class ZSDPoissonModel:
-    def __init__(self, data_path="zsd_poisson_test_data.csv", cutoff_index=206):
-        self.data = self._load_and_prepare_data(data_path)
-        self.teams = sorted(list(set(self.data["Home"]).union(self.data["Away"])))
+    def __init__(self, played_matches: pd.DataFrame = None):
+        self.played_matches = self._load_and_prepare_data(played_matches)
+        self.teams = sorted(
+            list(set(self.played_matches["Home"]).union(self.played_matches["Away"]))
+        )
         self.team_index = {team: i for i, team in enumerate(self.teams)}
         self.N = len(self.teams)
 
-        self.played_matches = self.data[:cutoff_index].copy()
-        self.unplayed_matches = self.data[cutoff_index:].copy()
+        self.played_matches = self.played_matches.copy()
 
         self._init_constants()
         self._fit_model()
         self._fit_regression()
 
-    def _load_and_prepare_data(self, path):
-        df = pd.read_csv(path)
-        df = format_date(df)
+    def _load_and_prepare_data(self, df):
         df["Game Total"] = df["FTHG"] + df["FTAG"]
         df["Home MOV"] = df["FTHG"] - df["FTAG"]
         return df
@@ -179,9 +177,9 @@ class ZSDPoissonModel:
         p_draw = 1 - p_home_win - p_away_win
 
         return {
-            "P(Home Win)": p_home_win,
-            "P(Draw)": p_draw,
-            "P(Away Win)": p_away_win,
+            "P_MOV(Home Win)": p_home_win,
+            "P_MOV(Draw)": p_draw,
+            "P_MOV(Away Win)": p_away_win,
         }
 
     def poisson_prob_matrix(self, lambda_home, lambda_away, max_goals=15):
@@ -194,8 +192,12 @@ class ZSDPoissonModel:
         return np.outer(home_probs, away_probs)
 
     def zip_adjustment_matrix(self, max_goals=15):
-        home_percent = self.data["FTHG"].value_counts(normalize=True).sort_index()
-        away_percent = self.data["FTAG"].value_counts(normalize=True).sort_index()
+        home_percent = (
+            self.played_matches["FTHG"].value_counts(normalize=True).sort_index()
+        )
+        away_percent = (
+            self.played_matches["FTAG"].value_counts(normalize=True).sort_index()
+        )
         idx = np.arange(0, max_goals + 1)
 
         observed = np.outer(
@@ -211,15 +213,3 @@ class ZSDPoissonModel:
     @staticmethod
     def _sigmoid(x):
         return np.exp(x) / (1 + np.exp(x))
-
-
-# Example usage in another script:
-# from zsd_model import ZSDPoissonModel
-model = ZSDPoissonModel()
-result = model.predict_match_mov("Bournemouth", "Everton")
-print(result)
-probs = model.outcome_probabilities(
-    result["home_goals_est"] - result["away_goals_est"],
-    result["away_goals_est"] - result["home_goals_est"],
-)
-print(probs)

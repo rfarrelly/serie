@@ -169,6 +169,7 @@ def merge_future_odds_data():
 
 def main():
     all_bet_candidates = []
+    all_zsd = []
 
     for league in Leagues:
         print(f"Processing {league.name} ({league.value['fbref_name']})")
@@ -184,6 +185,11 @@ def main():
         if bet_candidates:
             all_bet_candidates.extend(bet_candidates)
 
+        zsd_poisson = processor.get_zsd_poisson()
+
+        if zsd_poisson:
+            all_zsd.extend(zsd_poisson)
+
     if all_bet_candidates:
         print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
         latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
@@ -195,6 +201,11 @@ def main():
         ]
 
         latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
+
+    if all_zsd:
+        print(f"Getting zsd poisson data for the period {TODAY} to {END_DATE}")
+        latest_zsd_df = pd.DataFrame(all_zsd)
+        latest_zsd_df.to_csv("latest_zsd.csv", index=False)
 
     merge_future_odds_data()
     process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
