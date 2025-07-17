@@ -168,8 +168,8 @@ def merge_future_odds_data():
 
 
 def main():
-    all_bet_candidates = []
-    all_zsd = []
+    ppi_all_leagues = []
+    zsd_all_leagues = []
 
     for league in Leagues:
         print(f"Processing {league.name} ({league.value['fbref_name']})")
@@ -180,32 +180,30 @@ def main():
             processor.get_fbref_data()
             processor.get_fbduk_data()
 
-        bet_candidates = processor.generate_bet_candidates()
+        ppi = processor.get_points_performance_index()
 
-        if bet_candidates:
-            all_bet_candidates.extend(bet_candidates)
+        if ppi:
+            ppi_all_leagues.extend(ppi)
 
         zsd_poisson = processor.get_zsd_poisson()
 
         if zsd_poisson:
-            all_zsd.extend(zsd_poisson)
+            zsd_all_leagues.extend(zsd_poisson)
 
-    if all_bet_candidates:
+    if ppi_all_leagues:
         print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
-        latest_bet_candidates_df = pd.DataFrame(all_bet_candidates).sort_values(
-            by="PPI_Diff"
-        )
+        ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
 
-        latest_bet_candidates_df = latest_bet_candidates_df[
-            latest_bet_candidates_df["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
+        ppi_latest = ppi_latest[
+            ppi_latest["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
         ]
 
-        latest_bet_candidates_df.to_csv("latest_bet_candidates.csv", index=False)
+        ppi_latest.to_csv("latest_bet_candidates.csv", index=False)
 
-    if all_zsd:
+    if zsd_all_leagues:
         print(f"Getting zsd poisson data for the period {TODAY} to {END_DATE}")
-        latest_zsd_df = pd.DataFrame(all_zsd)
-        latest_zsd_df.to_csv("latest_zsd.csv", index=False)
+        zsd_latest = pd.DataFrame(zsd_all_leagues)
+        zsd_latest.to_csv("latest_zsd.csv", index=False)
 
     merge_future_odds_data()
     process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)

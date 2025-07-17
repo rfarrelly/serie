@@ -40,7 +40,7 @@ class LeagueProcessor:
             league=self.league, season=self.config.current_season
         )
 
-    def generate_bet_candidates(self) -> dict:
+    def get_points_performance_index(self) -> dict:
         fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
 
         home_ppg, away_ppg, total_ppg = compute_ppg(self.played_matches_df)
