@@ -410,7 +410,7 @@ def example_usage():
     # 2. Load new match data
     # This could be from a CSV file, API, or manually created DataFrame
     try:
-        new_matches = pd.read_csv("latest_rpi_and_odds.csv")
+        new_matches = pd.read_csv("latest_ppi_and_odds.csv")
         logger.info(f"Loaded {len(new_matches)} new matches for prediction")
     except FileNotFoundError:
         # Create a sample DataFrame for demonstration

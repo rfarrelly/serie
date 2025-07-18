@@ -263,7 +263,7 @@ def main():
 
     # # Process historical data
     historical_data = model.process_historical_data(
-        "historical_rpi_and_odds.csv", ["2022-2023", "2023-2024"]
+        "historical_ppi_and_odds.csv", ["2022-2023", "2023-2024"]
     )
 
     # Train models

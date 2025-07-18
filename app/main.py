@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from config import DEFAULT_CONFIG, END_DATE, GET_DATA, TODAY, Leagues
-from processing import LeagueProcessor, process_historical_data
+from processing import LeagueProcessor, get_historical_ppi
 from utils.datetime_helpers import format_date
 from utils.team_name_dict_builder import TeamNameManagerCLI
 
@@ -86,11 +86,11 @@ def merge_historical_odds_data():
     print(f"Merged historical odds size: {merged_df.shape[0]}")
     print(f"{merged_df[merged_df['PSCH'].isna()].shape[0]} unmerged historical odds")
 
-    merged_df.to_csv("historical_rpi_and_odds.csv", index=False)
+    merged_df.to_csv("historical_ppi_and_odds.csv", index=False)
 
 
 def merge_future_odds_data():
-    latest_rpi = pd.read_csv("latest_bet_candidates.csv")
+    latest_ppi = pd.read_csv("latest_ppi.csv")
     fbduk_main_odds_data = pd.read_csv("fixtures.csv").rename(
         {"HomeTeam": "Home", "AwayTeam": "Away"}, axis="columns"
     )[
@@ -134,7 +134,7 @@ def merge_future_odds_data():
 
     merged_df = (
         pd.merge(
-            latest_rpi,
+            latest_ppi,
             fbduk_odds_data,
             on=["Date", "Home", "Away"],
             how="left",
@@ -164,7 +164,7 @@ def merge_future_odds_data():
     merged_df = merged_df[columns].sort_values(by="PPI_Diff")
     print(f"Merged future odds size: {merged_df.shape[0]}")
 
-    merged_df.to_csv("latest_rpi_and_odds.csv", index=False)
+    merged_df.to_csv("latest_ppi_and_odds.csv", index=False)
 
 
 def main():
@@ -198,7 +198,7 @@ def main():
             ppi_latest["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
         ]
 
-        ppi_latest.to_csv("latest_bet_candidates.csv", index=False)
+        ppi_latest.to_csv("latest_ppi.csv", index=False)
 
     if zsd_all_leagues:
         print(f"Getting zsd poisson data for the period {TODAY} to {END_DATE}")
@@ -206,7 +206,7 @@ def main():
         zsd_latest.to_csv("latest_zsd.csv", index=False)
 
     merge_future_odds_data()
-    process_historical_data(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
+    get_historical_ppi(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
     merge_historical_odds_data()
     # build_team_name_dictionary()
 

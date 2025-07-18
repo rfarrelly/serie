@@ -516,7 +516,7 @@ class Backtester:
 
 def main():
     backtester = Backtester(
-        data_file="historical_rpi_and_odds.csv",
+        data_file="historical_ppi_and_odds.csv",
         season="2024-2025",
         min_week=10,
         ppi_diff_threshold=0.11,

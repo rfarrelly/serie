@@ -148,8 +148,8 @@ class LeagueProcessor:
         return preds_df.to_dict(orient="records")
 
 
-def process_historical_data(config: AppConfig) -> pd.DataFrame:
-    print("Processing historical data")
+def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
+    print("Processing historical PPI")
     files = [
         str(file)
         for file in config.fbref_data_dir.rglob("*.csv")
