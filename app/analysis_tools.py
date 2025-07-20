@@ -19,6 +19,7 @@ def tune_decay_rate(df, decay_rates, n_splits=5, scoring="sse"):
     """
     assert scoring in ["sse", "log_likelihood"]
 
+    teams = sorted(list(set(df["Home"]).union(df["Away"])))
     tscv = TimeSeriesSplit(n_splits=n_splits)
     results = []
 
@@ -33,7 +34,7 @@ def tune_decay_rate(df, decay_rates, n_splits=5, scoring="sse"):
                 continue
 
             try:
-                model = ZSDPoissonModel(train_df, decay_rate=decay)
+                model = ZSDPoissonModel(teams, train_df, decay_rate=decay)
             except RuntimeError as e:
                 print(f"[decay {decay:.5f}] fold failed: {e}")
                 continue
@@ -79,10 +80,13 @@ def tune_decay_rate(df, decay_rates, n_splits=5, scoring="sse"):
     return best[0], results
 
 
-matches = pd.read_csv(
-    "DATA/FBREF/Premier-League/Premier-League_2024-2025.csv", dtype={"Wk": int}
-)
-decays_to_test = np.linspace(0.0005, 0.005, 10)
+files = [
+    "DATA/FBREF/Premier-League/Premier-League_2024-2025.csv",
+    "DATA/FBREF/Premier-League/Premier-League_2023-2024.csv",
+    "DATA/FBREF/Premier-League/Premier-League_2022-2023.csv",
+]
+matches = pd.concat([pd.read_csv(file, dtype={"Wk": int}) for file in files])
+decays_to_test = np.linspace(0.01, 0.1, 10)
 best_decay, cv_results = tune_decay_rate(
     df=matches, decay_rates=decays_to_test, scoring="log_likelihood"
 )

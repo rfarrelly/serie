@@ -7,14 +7,21 @@ from utils.datetime_helpers import format_date
 
 
 class ZSDPoissonModel:
-    def __init__(self, played_matches: pd.DataFrame = None, decay_rate=0.0015):
+    def __init__(
+        self, teams=None, played_matches: pd.DataFrame = None, decay_rate=0.002
+    ):
+        # When testing we do splitting which may miss teams
+        if teams:
+            self.teams = teams
+        else:
+            self.teams = sorted(
+                list(set(played_matches["Home"]).union(played_matches["Away"]))
+            )
         self.decay_rate = decay_rate
         self.played_matches = self._load_and_prepare_data(
             played_matches, decay_rate=self.decay_rate
         )
-        self.teams = sorted(
-            list(set(self.played_matches["Home"]).union(self.played_matches["Away"]))
-        )
+
         self.team_index = {team: i for i, team in enumerate(self.teams)}
         self.N = len(self.teams)
 
@@ -31,12 +38,16 @@ class ZSDPoissonModel:
         if not np.issubdtype(df["Date"].dtype, np.datetime64):
             df["Date"] = pd.to_datetime(df["Date"])
 
-        df = df.sort_values("Date")
+        df = df.sort_values("Date").reset_index(drop=True)
         self.latest_date = df["Date"].max()
 
-        days_ago = (self.latest_date - df["Date"]).dt.days
-        df["Weight"] = np.exp(-decay_rate * days_ago)
+        # Use recency index instead of days
+        match_index = np.arange(len(df))[::-1]  # Most recent = 0
+        df["Weight"] = np.exp(-decay_rate * match_index)
+
+        # Normalize to keep total weight constant
         df["Weight"] *= len(df) / df["Weight"].sum()
+
         return df
 
     def _init_constants(self):
@@ -248,13 +259,11 @@ class ZSDPoissonModel:
         return norm.ppf(np.clip(x, eps, 1 - eps))
 
 
-matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
-matches = format_date(matches)
+# matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
+# matches = format_date(matches)
 # played_matches = matches[matches["Wk"] <= 20].copy()
 # unplayed_matches = matches[matches["Wk"] == 21]
-played_matches = matches[:206].copy()
-unplayed_matches = matches[206:]
-model = ZSDPoissonModel(played_matches=played_matches)
+# model = ZSDPoissonModel(played_matches=played_matches)
 
 # results = []
 # for fixture in unplayed_matches.itertuples(index=False):
@@ -303,6 +312,12 @@ model = ZSDPoissonModel(played_matches=played_matches)
 #     results.append(result)
 
 # preds_df = pd.DataFrame(results)
+
+matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
+matches = format_date(matches)
+played_matches = matches[:206].copy()
+unplayed_matches = matches[206:]
+model = ZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
 
 # Core predictions from the model
 result = model.predict_match_mov("Bournemouth", "Everton")
