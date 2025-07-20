@@ -3,14 +3,25 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy.optimize import minimize
 from scipy.stats import norm, poisson
+from utils.datetime_helpers import format_date
 
 
 class ZSDPoissonModel:
-    def __init__(self, played_matches: pd.DataFrame = None):
-        self.played_matches = self._load_and_prepare_data(played_matches)
-        self.teams = sorted(
-            list(set(self.played_matches["Home"]).union(self.played_matches["Away"]))
+    def __init__(
+        self, teams=None, played_matches: pd.DataFrame = None, decay_rate=0.002
+    ):
+        # When testing we do splitting which may miss teams
+        if teams:
+            self.teams = teams
+        else:
+            self.teams = sorted(
+                list(set(played_matches["Home"]).union(played_matches["Away"]))
+            )
+        self.decay_rate = decay_rate
+        self.played_matches = self._load_and_prepare_data(
+            played_matches, decay_rate=self.decay_rate
         )
+
         self.team_index = {team: i for i, team in enumerate(self.teams)}
         self.N = len(self.teams)
 
@@ -20,9 +31,23 @@ class ZSDPoissonModel:
         self._fit_model()
         self._fit_regression()
 
-    def _load_and_prepare_data(self, df):
+    def _load_and_prepare_data(self, df, decay_rate=0.0015):
         df["Game Total"] = df["FTHG"] + df["FTAG"]
         df["Home MOV"] = df["FTHG"] - df["FTAG"]
+
+        if not np.issubdtype(df["Date"].dtype, np.datetime64):
+            df["Date"] = pd.to_datetime(df["Date"])
+
+        df = df.sort_values("Date").reset_index(drop=True)
+        self.latest_date = df["Date"].max()
+
+        # Use recency index instead of days
+        match_index = np.arange(len(df))[::-1]  # Most recent = 0
+        df["Weight"] = np.exp(-decay_rate * match_index)
+
+        # Normalize to keep total weight constant
+        df["Weight"] *= len(df) / df["Weight"].sum()
+
         return df
 
     def _init_constants(self):
@@ -68,22 +93,28 @@ class ZSDPoissonModel:
         param_a = away_adj + arh - ara
 
         est_home_goals = (
-            self.avg_home_goals + norm.ppf(self._sigmoid(param_h)) * self.std_home_goals
+            self.avg_home_goals
+            + self._safe_ppf(self._sigmoid(param_h)) * self.std_home_goals
         )
         est_away_goals = (
-            self.avg_away_goals + norm.ppf(self._sigmoid(param_a)) * self.std_away_goals
+            self.avg_away_goals
+            + self._safe_ppf(self._sigmoid(param_a)) * self.std_away_goals
         )
 
         error_sq_home = (est_home_goals - self.played_matches["FTHG"].values) ** 2
         error_sq_away = (est_away_goals - self.played_matches["FTAG"].values) ** 2
 
-        return np.sum(error_sq_home + error_sq_away)
+        # Apply time decay weights
+        weights = self.played_matches["Weight"].values
+        weighted_error = weights * (error_sq_home + error_sq_away)
+
+        return np.sum(weighted_error)
 
     def _fit_model(self):
         initial_params = self._get_params_vec()
         result = minimize(self._compute_sse_total, initial_params, method="L-BFGS-B")
 
-        if not result.success:
+        if not result.success or np.any(np.isnan(result.x)):
             raise RuntimeError(f"Optimization failed: {result.message}")
 
         self.optimized_params = result.x
@@ -129,10 +160,12 @@ class ZSDPoissonModel:
         param_a = self.opt_away_adj + arh - ara
 
         est_home_goals = (
-            self.avg_home_goals + norm.ppf(self._sigmoid(param_h)) * self.std_home_goals
+            self.avg_home_goals
+            + self._safe_ppf(self._sigmoid(param_h)) * self.std_home_goals
         )
         est_away_goals = (
-            self.avg_away_goals + norm.ppf(self._sigmoid(param_a)) * self.std_away_goals
+            self.avg_away_goals
+            + self._safe_ppf(self._sigmoid(param_a)) * self.std_away_goals
         )
 
         return est_home_goals - est_away_goals
@@ -150,15 +183,22 @@ class ZSDPoissonModel:
             self.optimized_away_ratings[idx_a],
         )
 
-        param_h = self.opt_home_adj + hrh - hra
-        param_a = self.opt_away_adj + arh - ara
+        # Clamp the raw inputs before sigmoid → norm.ppf to prevent extreme values
+        param_h = np.clip(self.opt_home_adj + hrh - hra, -6, 6)
+        param_a = np.clip(self.opt_away_adj + arh - ara, -6, 6)
 
         est_home_goals = (
-            self.avg_home_goals + norm.ppf(self._sigmoid(param_h)) * self.std_home_goals
+            self.avg_home_goals
+            + self._safe_ppf(self._sigmoid(param_h)) * self.std_home_goals
         )
         est_away_goals = (
-            self.avg_away_goals + norm.ppf(self._sigmoid(param_a)) * self.std_away_goals
+            self.avg_away_goals
+            + self._safe_ppf(self._sigmoid(param_a)) * self.std_away_goals
         )
+
+        # Ensure Poisson lambda inputs are valid (positive)
+        est_home_goals = max(est_home_goals, 1e-3)
+        est_away_goals = max(est_away_goals, 1e-3)
 
         raw_mov = est_home_goals - est_away_goals
         predicted_mov = self.intercept + self.slope * raw_mov
@@ -212,4 +252,99 @@ class ZSDPoissonModel:
 
     @staticmethod
     def _sigmoid(x):
-        return np.exp(x) / (1 + np.exp(x))
+        return 1 / (1 + np.exp(-x))
+
+    @staticmethod
+    def _safe_ppf(x, eps=1e-6):
+        return norm.ppf(np.clip(x, eps, 1 - eps))
+
+
+# matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
+# matches = format_date(matches)
+# played_matches = matches[matches["Wk"] <= 20].copy()
+# unplayed_matches = matches[matches["Wk"] == 21]
+# model = ZSDPoissonModel(played_matches=played_matches)
+
+# results = []
+# for fixture in unplayed_matches.itertuples(index=False):
+#     week, date, time, home_team, away_team = (
+#         fixture.Wk,
+#         fixture.Date,
+#         fixture.Time,
+#         fixture.Home,
+#         fixture.Away,
+#     )
+
+#     # Core predictions from the model
+#     result = model.predict_match_mov(home_team, away_team)
+
+#     # Raw goal estimates
+#     lambda_home = result["home_goals_est"]
+#     lambda_away = result["away_goals_est"]
+
+#     # Get outcome probabilities from logistic-MOV model
+#     probs = model.outcome_probabilities(
+#         lambda_home - lambda_away, lambda_away - lambda_home
+#     )
+#     result |= probs
+
+#     # Generate Poisson and ZIP-adjusted matrices
+#     poisson_matrix = model.poisson_prob_matrix(lambda_home, lambda_away, max_goals=10)
+#     zip_adj_matrix = model.zip_adjustment_matrix(max_goals=10)
+#     zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
+
+#     # Add fixture metadata
+#     result["Wk"] = week
+#     result["Date"] = date
+#     result["Time"] = time
+#     result["Home"] = home_team
+#     result["Away"] = away_team
+
+#     # Collapse to outcome probabilities
+#     result["P_Poisson(Home Win)"] = np.tril(poisson_matrix, -1).sum()
+#     result["P_Poisson(Draw)"] = np.trace(poisson_matrix)
+#     result["P_Poisson(Away Win)"] = np.triu(poisson_matrix, 1).sum()
+
+#     result["P_ZIP(Home Win)"] = np.tril(zip_poisson_matrix, -1).sum()
+#     result["P_ZIP(Draw)"] = np.trace(zip_poisson_matrix)
+#     result["P_ZIP(Away Win)"] = np.triu(zip_poisson_matrix, 1).sum()
+
+#     results.append(result)
+
+# preds_df = pd.DataFrame(results)
+
+matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
+matches = format_date(matches)
+played_matches = matches[:206].copy()
+unplayed_matches = matches[206:]
+model = ZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
+
+# Core predictions from the model
+result = model.predict_match_mov("Bournemouth", "Everton")
+
+# Raw goal estimates
+lambda_home = result["home_goals_est"]
+lambda_away = result["away_goals_est"]
+
+# Get outcome probabilities from logistic-MOV model
+probs = model.outcome_probabilities(
+    lambda_home - lambda_away, lambda_away - lambda_home
+)
+result |= probs
+
+# Generate Poisson and ZIP-adjusted matrices
+poisson_matrix = model.poisson_prob_matrix(lambda_home, lambda_away, max_goals=10)
+zip_adj_matrix = model.zip_adjustment_matrix(max_goals=10)
+zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
+
+# Collapse to outcome probabilities
+result["P_Poisson(Home Win)"] = np.tril(poisson_matrix, -1).sum()
+result["P_Poisson(Draw)"] = np.trace(poisson_matrix)
+result["P_Poisson(Away Win)"] = np.triu(poisson_matrix, 1).sum()
+
+result["P_ZIP(Home Win)"] = np.tril(zip_poisson_matrix, -1).sum()
+result["P_ZIP(Draw)"] = np.trace(zip_poisson_matrix)
+result["P_ZIP(Away Win)"] = np.triu(zip_poisson_matrix, 1).sum()
+
+preds_df = pd.DataFrame(data=result, index=[0])
+print(preds_df)
