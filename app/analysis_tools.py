@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from scipy.stats import poisson
+from sklearn.metrics import log_loss, root_mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 from zsd_poisson_model import ZSDPoissonModel
 
@@ -80,17 +81,74 @@ def tune_decay_rate(df, decay_rates, n_splits=5, scoring="sse"):
     return best[0], results
 
 
-files = [
-    "DATA/FBREF/Premier-League/Premier-League_2024-2025.csv",
-    "DATA/FBREF/Premier-League/Premier-League_2023-2024.csv",
-    "DATA/FBREF/Premier-League/Premier-League_2022-2023.csv",
-]
-matches = pd.concat([pd.read_csv(file, dtype={"Wk": int}) for file in files])
-decays_to_test = np.linspace(0.01, 0.1, 10)
-best_decay, cv_results = tune_decay_rate(
-    df=matches, decay_rates=decays_to_test, scoring="log_likelihood"
-)
+def benchmark_model(
+    df, model_class: ZSDPoissonModel, teams=None, decay_rate=None, n_splits=5
+):
+    tscv = TimeSeriesSplit(n_splits=n_splits)
 
-print("Best decay rate:", best_decay)
-for d, score in cv_results:
-    print(f"Decay {d:.5f} => Score: {score:.4f}")
+    all_metrics = {"log_loss": [], "rmse_home": [], "rmse_away": [], "brier": []}
+
+    for train_idx, val_idx in tscv.split(df):
+        train_df = df.iloc[train_idx].copy()
+        val_df = df.iloc[val_idx]
+
+        if teams:
+            model = model_class(
+                teams=teams, played_matches=train_df, decay_rate=decay_rate
+            )
+        else:
+            model = model_class(played_matches=train_df, decay_rate=decay_rate)
+
+        y_true_probs = []
+        y_pred_probs = []
+        y_true_goals = []
+        y_pred_goals = []
+
+        for _, row in val_df.iterrows():
+            pred = model.predict_match_mov(row["Home"], row["Away"])
+            lambda_h = pred["home_goals_est"]
+            lambda_a = pred["away_goals_est"]
+
+            # Store predictions
+            y_pred_goals.append((lambda_h, lambda_a))
+            y_true_goals.append((row["FTHG"], row["FTAG"]))
+
+            # Build full probability matrix
+            prob_matrix = model.poisson_prob_matrix(lambda_h, lambda_a, max_goals=10)
+            p_hw = np.tril(prob_matrix, -1).sum()
+            p_aw = np.triu(prob_matrix, 1).sum()
+            p_draw = np.trace(prob_matrix)
+
+            y_pred_probs.append([p_hw, p_draw, p_aw])
+
+            # One-hot true outcome
+            if row["FTHG"] > row["FTAG"]:
+                y_true_probs.append([1, 0, 0])
+            elif row["FTHG"] < row["FTAG"]:
+                y_true_probs.append([0, 0, 1])
+            else:
+                y_true_probs.append([0, 1, 0])
+
+        # Metrics
+        true_goals = np.array(y_true_goals)
+        pred_goals = np.array(y_pred_goals)
+        all_metrics["rmse_home"].append(
+            root_mean_squared_error(true_goals[:, 0], pred_goals[:, 0])
+        )
+        all_metrics["rmse_away"].append(
+            root_mean_squared_error(true_goals[:, 1], pred_goals[:, 1])
+        )
+
+        pred_probs = np.array(y_pred_probs)
+        true_probs = np.array(y_true_probs)
+
+        eps = 1e-15
+        logloss = -np.mean(
+            np.sum(true_probs * np.log(np.clip(pred_probs, eps, 1)), axis=1)
+        )
+        all_metrics["log_loss"].append(logloss)
+
+        brier = np.mean(np.sum((pred_probs - true_probs) ** 2, axis=1))
+        all_metrics["brier"].append(brier)
+
+    return {k: np.mean(v) for k, v in all_metrics.items()}
