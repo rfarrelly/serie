@@ -205,9 +205,9 @@ class ZSDPoissonModel:
         p_away_win = 1 - norm.cdf(0.5, loc=spread_away, scale=self.model_error)
         p_draw = 1 - p_home_win - p_away_win
         return {
-            "P_MOV(H)": round(p_home_win, 4),
-            "P_MOV(D)": round(p_draw, 4),
-            "P_MOV(A)": round(p_away_win, 4),
+            "P_MOV(H)": p_home_win,
+            "P_MOV(D)": p_draw,
+            "P_MOV(A)": p_away_win,
         }
 
     def poisson_prob_matrix(self, lambda_home, lambda_away, max_goals=15):
@@ -273,6 +273,47 @@ class ZSDPoissonModel:
             "P(Draw)": draw,
             "P(Away Win)": away_win,
         }
+
+    def predict_match(self, home_team: str, away_team: str, max_goals=15) -> dict:
+        mov_pred = self.predict_match_mov(home_team, away_team)
+
+        poisson = self.poisson_prob_matrix(
+            mov_pred["home_goals_est"], mov_pred["away_goals_est"], max_goals
+        )
+        poisson /= poisson.sum()
+        poisson_home = np.tril(poisson, -1).sum()
+        poisson_draw = np.trace(poisson)
+        poisson_away = np.triu(poisson, 1).sum()
+
+        zip_pred = self.predict_zip_adjusted_outcomes(
+            home_team, away_team, max_goals=max_goals
+        )
+        mov_probs = self.outcome_probabilities(
+            spread_home=mov_pred["raw_mov"], spread_away=-mov_pred["raw_mov"]
+        )
+
+        row = {
+            "Home": home_team,
+            "Away": away_team,
+            "MOV_HomeGoals": mov_pred["home_goals_est"],
+            "MOV_AwayGoals": mov_pred["away_goals_est"],
+            "MOV_Raw": mov_pred["raw_mov"],
+            "MOV_Adjusted": mov_pred["predicted_mov"],
+            "P_MOV(H)": mov_probs["P_MOV(H)"],
+            "P_MOV(D)": mov_probs["P_MOV(D)"],
+            "P_MOV(A)": mov_probs["P_MOV(A)"],
+            "P_Poisson(H)": poisson_home,
+            "P_Poisson(D)": poisson_draw,
+            "P_Poisson(A)": poisson_away,
+            "P_ZIP(H)": zip_pred["P(Home Win)"],
+            "P_ZIP(D)": zip_pred["P(Draw)"],
+            "P_ZIP(A)": zip_pred["P(Away Win)"],
+            "P_ZIP_ADJ(H)": zip_pred["P(Home Win)"],
+            "P_ZIP_ADJ(D)": zip_pred["P(Draw)"],
+            "P_ZIP_ADJ(A)": zip_pred["P(Away Win)"],
+        }
+
+        return row
 
     @staticmethod
     def _sigmoid(x):

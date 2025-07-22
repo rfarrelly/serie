@@ -39,59 +39,10 @@ def sanity_check():
     matches = format_date(matches)
     played_matches = matches[:206].copy()
     model = ZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
-
-    # Core predictions from the model
-    result = model.predict_match_mov("Bournemouth", "Everton")
-
-    # Raw goal estimates
-    lambda_home = result["home_goals_est"]
-    lambda_away = result["away_goals_est"]
-
-    # Get outcome probabilities from logistic-MOV model
-    probs = model.outcome_probabilities(
-        lambda_home - lambda_away, lambda_away - lambda_home
-    )
-    result |= probs
-
-    # Generate Poisson and ZIP-adjusted matrices
-    poisson_matrix = model.poisson_prob_matrix(lambda_home, lambda_away, max_goals=15)
-    zip_adj_matrix = model.zip_adjustment_matrix(max_goals=15)
-    zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
-    zip_adj_outcomes = model.predict_zip_adjusted_outcomes(
+    preds = model.predict_match(
         home_team="Bournemouth", away_team="Everton", max_goals=15
     )
-
-    # Collapse to outcome probabilities
-    result["P_Poisson(H)"] = round(np.tril(poisson_matrix, -1).sum(), 4)
-    result["P_Poisson(D)"] = round(np.trace(poisson_matrix), 4)
-    result["P_Poisson(A)"] = round(np.triu(poisson_matrix, 1).sum(), 4)
-
-    result["P_ZIP(H)"] = round(np.tril(zip_poisson_matrix, -1).sum(), 4)
-    result["P_ZIP(D)"] = round(np.trace(zip_poisson_matrix), 4)
-    result["P_ZIP(A)"] = round(np.triu(zip_poisson_matrix, 1).sum(), 4)
-
-    result["P_ZIP_ADJ(H)"] = round(zip_adj_outcomes["P(Home Win)"], 4)
-    result["P_ZIP_ADJ(D)"] = round(zip_adj_outcomes["P(Draw)"], 4)
-    result["P_ZIP_ADJ(A)"] = round(zip_adj_outcomes["P(Away Win)"], 4)
-
-    preds_df = pd.DataFrame(data=result, index=[0])[
-        [
-            "P_MOV(H)",
-            "P_MOV(D)",
-            "P_MOV(A)",
-            "P_Poisson(H)",
-            "P_Poisson(D)",
-            "P_Poisson(A)",
-            "P_ZIP(H)",
-            "P_ZIP(D)",
-            "P_ZIP(A)",
-            "P_ZIP_ADJ(H)",
-            "P_ZIP_ADJ(D)",
-            "P_ZIP_ADJ(A)",
-        ]
-    ]
-    preds_df.to_csv("temp.csv", index=False)
-    print(preds_df)
+    pd.DataFrame(data=preds, index=[0]).to_csv("temp.csv", index=False)
 
 
 def main():
