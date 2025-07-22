@@ -9,7 +9,6 @@ class ZSDPoissonModel:
     def __init__(
         self, teams=None, played_matches: pd.DataFrame = None, decay_rate=0.001
     ):
-        # When testing we do splitting which may miss teams
         if teams:
             self.teams = teams
         else:
@@ -24,14 +23,13 @@ class ZSDPoissonModel:
         self.team_index = {team: i for i, team in enumerate(self.teams)}
         self.N = len(self.teams)
 
-        self.played_matches = self.played_matches.copy()
-
         self._init_constants()
         self._fit_model()
         self._fit_regression()
         self.zip_matrix = self.zip_adjustment_matrix()
 
     def _load_and_prepare_data(self, df, decay_rate=0.0015):
+        df = df.copy()
         df["Game Total"] = df["FTHG"] + df["FTAG"]
         df["Home MOV"] = df["FTHG"] - df["FTAG"]
 
@@ -41,11 +39,8 @@ class ZSDPoissonModel:
         df = df.sort_values("Date").reset_index(drop=True)
         self.latest_date = df["Date"].max()
 
-        # Use recency index instead of days
-        match_index = np.arange(len(df))[::-1]  # Most recent = 0
+        match_index = np.arange(len(df))[::-1]
         df["Weight"] = np.exp(-decay_rate * match_index)
-
-        # Normalize to keep total weight constant
         df["Weight"] *= len(df) / df["Weight"].sum()
 
         return df
@@ -60,37 +55,39 @@ class ZSDPoissonModel:
         return np.zeros(2 * self.N + 2)
 
     def _unpack_params(self, params):
-        home_ratings = params[: self.N]
-        away_ratings = params[self.N : 2 * self.N]
+        attack_ratings = params[: self.N]
+        defense_ratings = params[self.N : 2 * self.N]
         home_adj, away_adj = params[-2:]
-        return home_ratings, away_ratings, home_adj, away_adj
+        return attack_ratings, defense_ratings, home_adj, away_adj
 
     def _compute_sse_total(self, params):
-        home_ratings, away_ratings, home_adj, away_adj = self._unpack_params(params)
-
-        hrh = (
-            self.played_matches["Home"]
-            .map(lambda t: home_ratings[self.team_index[t]])
-            .values
-        )
-        hra = (
-            self.played_matches["Away"]
-            .map(lambda t: home_ratings[self.team_index[t]])
-            .values
-        )
-        arh = (
-            self.played_matches["Home"]
-            .map(lambda t: away_ratings[self.team_index[t]])
-            .values
-        )
-        ara = (
-            self.played_matches["Away"]
-            .map(lambda t: away_ratings[self.team_index[t]])
-            .values
+        attack_ratings, defense_ratings, home_adj, away_adj = self._unpack_params(
+            params
         )
 
-        param_h = home_adj + hrh - hra
-        param_a = away_adj + arh - ara
+        atk_h = (
+            self.played_matches["Home"]
+            .map(lambda t: attack_ratings[self.team_index[t]])
+            .values
+        )
+        def_a = (
+            self.played_matches["Away"]
+            .map(lambda t: defense_ratings[self.team_index[t]])
+            .values
+        )
+        atk_a = (
+            self.played_matches["Away"]
+            .map(lambda t: attack_ratings[self.team_index[t]])
+            .values
+        )
+        def_h = (
+            self.played_matches["Home"]
+            .map(lambda t: defense_ratings[self.team_index[t]])
+            .values
+        )
+
+        param_h = np.clip(home_adj + atk_h - def_a, -6, 6)
+        param_a = np.clip(away_adj + atk_a - def_h, -6, 6)
 
         est_home_goals = (
             self.avg_home_goals
@@ -104,7 +101,6 @@ class ZSDPoissonModel:
         error_sq_home = (est_home_goals - self.played_matches["FTHG"].values) ** 2
         error_sq_away = (est_away_goals - self.played_matches["FTAG"].values) ** 2
 
-        # Apply time decay weights
         weights = self.played_matches["Weight"].values
         weighted_error = weights * (error_sq_home + error_sq_away)
 
@@ -119,8 +115,8 @@ class ZSDPoissonModel:
 
         self.optimized_params = result.x
         (
-            self.optimized_home_ratings,
-            self.optimized_away_ratings,
+            self.attack_ratings,
+            self.defense_ratings,
             self.opt_home_adj,
             self.opt_away_adj,
         ) = self._unpack_params(self.optimized_params)
@@ -129,35 +125,34 @@ class ZSDPoissonModel:
         raw_mov = self._get_raw_mov()
         y = self.played_matches["Home MOV"].values
         X = sm.add_constant(raw_mov)
-
         self.reg_model = sm.OLS(y, X).fit()
         self.intercept, self.slope = self.reg_model.params
         self.model_error = np.sqrt(self.reg_model.mse_resid)
 
     def _get_raw_mov(self):
-        hrh = (
+        atk_h = (
             self.played_matches["Home"]
-            .map(lambda t: self.optimized_home_ratings[self.team_index[t]])
+            .map(lambda t: self.attack_ratings[self.team_index[t]])
             .values
         )
-        hra = (
+        def_a = (
             self.played_matches["Away"]
-            .map(lambda t: self.optimized_home_ratings[self.team_index[t]])
+            .map(lambda t: self.defense_ratings[self.team_index[t]])
             .values
         )
-        arh = (
+        atk_a = (
+            self.played_matches["Away"]
+            .map(lambda t: self.attack_ratings[self.team_index[t]])
+            .values
+        )
+        def_h = (
             self.played_matches["Home"]
-            .map(lambda t: self.optimized_away_ratings[self.team_index[t]])
-            .values
-        )
-        ara = (
-            self.played_matches["Away"]
-            .map(lambda t: self.optimized_away_ratings[self.team_index[t]])
+            .map(lambda t: self.defense_ratings[self.team_index[t]])
             .values
         )
 
-        param_h = self.opt_home_adj + hrh - hra
-        param_a = self.opt_away_adj + arh - ara
+        param_h = np.clip(self.opt_home_adj + atk_h - def_a, -6, 6)
+        param_a = np.clip(self.opt_away_adj + atk_a - def_h, -6, 6)
 
         est_home_goals = (
             self.avg_home_goals
@@ -174,18 +169,13 @@ class ZSDPoissonModel:
         idx_h = self.team_index[home_team]
         idx_a = self.team_index[away_team]
 
-        hrh, hra = (
-            self.optimized_home_ratings[idx_h],
-            self.optimized_home_ratings[idx_a],
-        )
-        arh, ara = (
-            self.optimized_away_ratings[idx_h],
-            self.optimized_away_ratings[idx_a],
-        )
+        atk_h = self.attack_ratings[idx_h]
+        atk_a = self.attack_ratings[idx_a]
+        def_h = self.defense_ratings[idx_h]
+        def_a = self.defense_ratings[idx_a]
 
-        # Clamp the raw inputs before sigmoid → norm.ppf to prevent extreme values
-        param_h = np.clip(self.opt_home_adj + hrh - hra, -6, 6)
-        param_a = np.clip(self.opt_away_adj + arh - ara, -6, 6)
+        param_h = np.clip(self.opt_home_adj + atk_h - def_a, -6, 6)
+        param_a = np.clip(self.opt_away_adj + atk_a - def_h, -6, 6)
 
         est_home_goals = (
             self.avg_home_goals
@@ -196,7 +186,6 @@ class ZSDPoissonModel:
             + self._safe_ppf(self._sigmoid(param_a)) * self.std_away_goals
         )
 
-        # Ensure Poisson lambda inputs are valid (positive)
         est_home_goals = max(est_home_goals, 1e-3)
         est_away_goals = max(est_away_goals, 1e-3)
 
@@ -215,20 +204,17 @@ class ZSDPoissonModel:
         p_home_win = 1 - norm.cdf(0.5, loc=spread_home, scale=self.model_error)
         p_away_win = 1 - norm.cdf(0.5, loc=spread_away, scale=self.model_error)
         p_draw = 1 - p_home_win - p_away_win
-
         return {
-            "P_MOV(Home Win)": p_home_win,
-            "P_MOV(Draw)": p_draw,
-            "P_MOV(Away Win)": p_away_win,
+            "P_MOV(H)": p_home_win,
+            "P_MOV(D)": p_draw,
+            "P_MOV(A)": p_away_win,
         }
 
     def poisson_prob_matrix(self, lambda_home, lambda_away, max_goals=15):
         home_goals = np.arange(0, max_goals + 1)
         away_goals = np.arange(0, max_goals + 1)
-
         home_probs = poisson.pmf(home_goals, lambda_home)
         away_probs = poisson.pmf(away_goals, lambda_away)
-
         return np.outer(home_probs, away_probs)
 
     def zip_adjustment_matrix(self, max_goals=15):
@@ -239,12 +225,10 @@ class ZSDPoissonModel:
             self.played_matches["FTAG"].value_counts(normalize=True).sort_index()
         )
         idx = np.arange(0, max_goals + 1)
-
         observed = np.outer(
             home_percent.reindex(idx, fill_value=0),
             away_percent.reindex(idx, fill_value=0),
         )
-
         expected = self.poisson_prob_matrix(
             self.avg_home_goals, self.avg_away_goals, max_goals
         )
@@ -254,18 +238,13 @@ class ZSDPoissonModel:
         idx_h = self.team_index[home_team]
         idx_a = self.team_index[away_team]
 
-        # Ratings and adjustments
-        hrh, hra = (
-            self.optimized_home_ratings[idx_h],
-            self.optimized_home_ratings[idx_a],
-        )
-        arh, ara = (
-            self.optimized_away_ratings[idx_h],
-            self.optimized_away_ratings[idx_a],
-        )
+        atk_h = self.attack_ratings[idx_h]
+        atk_a = self.attack_ratings[idx_a]
+        def_h = self.defense_ratings[idx_h]
+        def_a = self.defense_ratings[idx_a]
 
-        param_h = self.opt_home_adj + hrh - hra
-        param_a = self.opt_away_adj + arh - ara
+        param_h = self.opt_home_adj + atk_h - def_a
+        param_a = self.opt_away_adj + atk_a - def_h
 
         lambda_home = (
             self.avg_home_goals + norm.ppf(self._sigmoid(param_h)) * self.std_home_goals
@@ -274,19 +253,14 @@ class ZSDPoissonModel:
             self.avg_away_goals + norm.ppf(self._sigmoid(param_a)) * self.std_away_goals
         )
 
-        # Clip for numerical safety
         lambda_home = np.clip(lambda_home, 0.01, 10)
         lambda_away = np.clip(lambda_away, 0.01, 10)
 
-        # Base Poisson matrix
         base_poisson = self.poisson_prob_matrix(lambda_home, lambda_away, max_goals)
-
-        # ZIP-adjusted matrix
         zip_matrix = self.zip_matrix.values[: max_goals + 1, : max_goals + 1]
         zip_adjusted = base_poisson * zip_matrix
-        zip_adjusted /= zip_adjusted.sum()  # Normalize
+        zip_adjusted /= zip_adjusted.sum()
 
-        # Outcome probabilities
         home_win = np.tril(zip_adjusted, -1).sum()
         draw = np.trace(zip_adjusted)
         away_win = np.triu(zip_adjusted, 1).sum()
@@ -299,6 +273,47 @@ class ZSDPoissonModel:
             "P(Draw)": draw,
             "P(Away Win)": away_win,
         }
+
+    def predict_match(self, home_team: str, away_team: str, max_goals=15) -> dict:
+        mov_pred = self.predict_match_mov(home_team, away_team)
+
+        poisson = self.poisson_prob_matrix(
+            mov_pred["home_goals_est"], mov_pred["away_goals_est"], max_goals
+        )
+        poisson /= poisson.sum()
+        poisson_home = np.tril(poisson, -1).sum()
+        poisson_draw = np.trace(poisson)
+        poisson_away = np.triu(poisson, 1).sum()
+
+        zip_pred = self.predict_zip_adjusted_outcomes(
+            home_team, away_team, max_goals=max_goals
+        )
+        mov_probs = self.outcome_probabilities(
+            spread_home=mov_pred["raw_mov"], spread_away=-mov_pred["raw_mov"]
+        )
+
+        row = {
+            "Home": home_team,
+            "Away": away_team,
+            "MOV_HomeGoals": mov_pred["home_goals_est"],
+            "MOV_AwayGoals": mov_pred["away_goals_est"],
+            "MOV_Raw": mov_pred["raw_mov"],
+            "MOV_Adjusted": mov_pred["predicted_mov"],
+            "P_MOV(H)": mov_probs["P_MOV(H)"],
+            "P_MOV(D)": mov_probs["P_MOV(D)"],
+            "P_MOV(A)": mov_probs["P_MOV(A)"],
+            "P_Poisson(H)": poisson_home,
+            "P_Poisson(D)": poisson_draw,
+            "P_Poisson(A)": poisson_away,
+            "P_ZIP(H)": zip_pred["P(Home Win)"],
+            "P_ZIP(D)": zip_pred["P(Draw)"],
+            "P_ZIP(A)": zip_pred["P(Away Win)"],
+            "P_ZIP_ADJ(H)": zip_pred["P(Home Win)"],
+            "P_ZIP_ADJ(D)": zip_pred["P(Draw)"],
+            "P_ZIP_ADJ(A)": zip_pred["P(Away Win)"],
+        }
+
+        return row
 
     @staticmethod
     def _sigmoid(x):
