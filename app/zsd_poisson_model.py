@@ -205,9 +205,9 @@ class ZSDPoissonModel:
         p_away_win = 1 - norm.cdf(0.5, loc=spread_away, scale=self.model_error)
         p_draw = 1 - p_home_win - p_away_win
         return {
-            "P_MOV(Home Win)": p_home_win,
-            "P_MOV(Draw)": p_draw,
-            "P_MOV(Away Win)": p_away_win,
+            "P_MOV(H)": round(p_home_win, 4),
+            "P_MOV(D)": round(p_draw, 4),
+            "P_MOV(A)": round(p_away_win, 4),
         }
 
     def poisson_prob_matrix(self, lambda_home, lambda_away, max_goals=15):

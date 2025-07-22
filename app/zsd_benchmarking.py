@@ -62,19 +62,34 @@ def sanity_check():
     )
 
     # Collapse to outcome probabilities
-    result["P_Poisson(H)"] = round(np.tril(poisson_matrix, -1).sum(), 2)
-    result["P_Poisson(D)"] = round(np.trace(poisson_matrix), 2)
-    result["P_Poisson(A)"] = round(np.triu(poisson_matrix, 1).sum(), 2)
+    result["P_Poisson(H)"] = round(np.tril(poisson_matrix, -1).sum(), 4)
+    result["P_Poisson(D)"] = round(np.trace(poisson_matrix), 4)
+    result["P_Poisson(A)"] = round(np.triu(poisson_matrix, 1).sum(), 4)
 
-    result["P_ZIP(H)"] = round(np.tril(zip_poisson_matrix, -1).sum(), 2)
-    result["P_ZIP(D)"] = round(np.trace(zip_poisson_matrix), 2)
-    result["P_ZIP(A)"] = round(np.triu(zip_poisson_matrix, 1).sum(), 2)
+    result["P_ZIP(H)"] = round(np.tril(zip_poisson_matrix, -1).sum(), 4)
+    result["P_ZIP(D)"] = round(np.trace(zip_poisson_matrix), 4)
+    result["P_ZIP(A)"] = round(np.triu(zip_poisson_matrix, 1).sum(), 4)
 
-    result["P_ZIP_ADJ(H)"] = round(zip_adj_outcomes["P(Home Win)"], 2)
-    result["P_ZIP_ADJ(D)"] = round(zip_adj_outcomes["P(Draw)"], 2)
-    result["P_ZIP_ADJ(A)"] = round(zip_adj_outcomes["P(Away Win)"], 2)
+    result["P_ZIP_ADJ(H)"] = round(zip_adj_outcomes["P(Home Win)"], 4)
+    result["P_ZIP_ADJ(D)"] = round(zip_adj_outcomes["P(Draw)"], 4)
+    result["P_ZIP_ADJ(A)"] = round(zip_adj_outcomes["P(Away Win)"], 4)
 
-    preds_df = pd.DataFrame(data=result, index=[0])
+    preds_df = pd.DataFrame(data=result, index=[0])[
+        [
+            "P_MOV(H)",
+            "P_MOV(D)",
+            "P_MOV(A)",
+            "P_Poisson(H)",
+            "P_Poisson(D)",
+            "P_Poisson(A)",
+            "P_ZIP(H)",
+            "P_ZIP(D)",
+            "P_ZIP(A)",
+            "P_ZIP_ADJ(H)",
+            "P_ZIP_ADJ(D)",
+            "P_ZIP_ADJ(A)",
+        ]
+    ]
     preds_df.to_csv("temp.csv", index=False)
     print(preds_df)
 
