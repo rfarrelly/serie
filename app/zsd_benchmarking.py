@@ -32,70 +32,113 @@ def run_benchmarking():
     ]
     matches = pd.concat([pd.read_csv(file, dtype={"Wk": int}) for file in files])
     teams = sorted(list(set(matches["Home"]).union(matches["Away"])))
-    results = benchmark_model(
-        teams=teams, df=matches, model_class=ZSDPoissonModel, decay_rate=0.001
-    )
+    results = benchmark_model(df=matches, model_class=ZSDPoissonModel)
     print(results)
 
 
 def sanity_check():
+    # matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
+    # matches = format_date(matches)
+    # played_matches = matches[matches["Wk"] <= 20].copy()
+    # unplayed_matches = matches[matches["Wk"] > 20]
+    # model = ZSDPoissonModel(played_matches=played_matches)
+
+    # results = []
+    # for fixture in unplayed_matches.itertuples(index=False):
+    #     week, date, time, home_team, away_team = (
+    #         fixture.Wk,
+    #         fixture.Date,
+    #         fixture.Time,
+    #         fixture.Home,
+    #         fixture.Away,
+    #     )
+
+    #     # Core predictions from the model
+    #     result = model.predict_match_mov(home_team, away_team)
+
+    #     # Raw goal estimates
+    #     lambda_home = result["home_goals_est"]
+    #     lambda_away = result["away_goals_est"]
+
+    #     # Get outcome probabilities from logistic-MOV model
+    #     probs = model.outcome_probabilities(
+    #         lambda_home - lambda_away, lambda_away - lambda_home
+    #     )
+    #     result |= probs
+
+    #     # Generate Poisson and ZIP-adjusted matrices
+    #     poisson_matrix = model.poisson_prob_matrix(
+    #         lambda_home, lambda_away, max_goals=10
+    #     )
+    #     zip_adj_matrix = model.zip_adjustment_matrix(max_goals=10)
+    #     zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
+
+    #     # Add fixture metadata
+    #     result["Wk"] = week
+    #     result["Date"] = date
+    #     result["Time"] = time
+    #     result["Home"] = home_team
+    #     result["Away"] = away_team
+
+    #     # Collapse to outcome probabilities
+    #     result["P_Poisson(Home Win)"] = np.tril(poisson_matrix, -1).sum()
+    #     result["P_Poisson(Draw)"] = np.trace(poisson_matrix)
+    #     result["P_Poisson(Away Win)"] = np.triu(poisson_matrix, 1).sum()
+
+    #     result["P_ZIP(Home Win)"] = np.tril(zip_poisson_matrix, -1).sum()
+    #     result["P_ZIP(Draw)"] = np.trace(zip_poisson_matrix)
+    #     result["P_ZIP(Away Win)"] = np.triu(zip_poisson_matrix, 1).sum()
+
+    #     results.append(result)
+    ### Single Match ###
     matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
     matches = format_date(matches)
-    played_matches = matches[matches["Wk"] <= 20].copy()
-    unplayed_matches = matches[matches["Wk"] > 20]
-    model = ZSDPoissonModel(played_matches=played_matches)
+    played_matches = matches[:206].copy()
+    unplayed_matches = matches[206:]
+    model = ZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
 
-    results = []
-    for fixture in unplayed_matches.itertuples(index=False):
-        week, date, time, home_team, away_team = (
-            fixture.Wk,
-            fixture.Date,
-            fixture.Time,
-            fixture.Home,
-            fixture.Away,
-        )
+    # Core predictions from the model
+    result = model.predict_match_mov("Bournemouth", "Everton")
 
-        # Core predictions from the model
-        result = model.predict_match_mov(home_team, away_team)
+    # Raw goal estimates
+    lambda_home = result["home_goals_est"]
+    lambda_away = result["away_goals_est"]
 
-        # Raw goal estimates
-        lambda_home = result["home_goals_est"]
-        lambda_away = result["away_goals_est"]
+    # Get outcome probabilities from logistic-MOV model
+    probs = model.outcome_probabilities(
+        lambda_home - lambda_away, lambda_away - lambda_home
+    )
+    result |= probs
 
-        # Get outcome probabilities from logistic-MOV model
-        probs = model.outcome_probabilities(
-            lambda_home - lambda_away, lambda_away - lambda_home
-        )
-        result |= probs
+    # Generate Poisson and ZIP-adjusted matrices
+    poisson_matrix = model.poisson_prob_matrix(lambda_home, lambda_away, max_goals=15)
+    zip_adj_matrix = model.zip_adjustment_matrix(max_goals=15)
+    zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
+    zip_adj_outcomes = model.predict_zip_adjusted_outcomes(
+        home_team="Bournemouth", away_team="Everton", max_goals=15
+    )
 
-        # Generate Poisson and ZIP-adjusted matrices
-        poisson_matrix = model.poisson_prob_matrix(
-            lambda_home, lambda_away, max_goals=10
-        )
-        zip_adj_matrix = model.zip_adjustment_matrix(max_goals=10)
-        zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
+    # Collapse to outcome probabilities
+    result["P_Poisson(H)"] = round(np.tril(poisson_matrix, -1).sum(), 2)
+    result["P_Poisson(D)"] = round(np.trace(poisson_matrix), 2)
+    result["P_Poisson(A)"] = round(np.triu(poisson_matrix, 1).sum(), 2)
 
-        # Add fixture metadata
-        result["Wk"] = week
-        result["Date"] = date
-        result["Time"] = time
-        result["Home"] = home_team
-        result["Away"] = away_team
+    result["P_ZIP(H)"] = round(np.tril(zip_poisson_matrix, -1).sum(), 2)
+    result["P_ZIP(D)"] = round(np.trace(zip_poisson_matrix), 2)
+    result["P_ZIP(A)"] = round(np.triu(zip_poisson_matrix, 1).sum(), 2)
 
-        # Collapse to outcome probabilities
-        result["P_Poisson(Home Win)"] = np.tril(poisson_matrix, -1).sum()
-        result["P_Poisson(Draw)"] = np.trace(poisson_matrix)
-        result["P_Poisson(Away Win)"] = np.triu(poisson_matrix, 1).sum()
+    result["P_ZIP_ADJ(H)"] = round(zip_adj_outcomes["P(Home Win)"], 2)
+    result["P_ZIP_ADJ(D)"] = round(zip_adj_outcomes["P(Draw)"], 2)
+    result["P_ZIP_ADJ(A)"] = round(zip_adj_outcomes["P(Away Win)"], 2)
 
-        result["P_ZIP(Home Win)"] = np.tril(zip_poisson_matrix, -1).sum()
-        result["P_ZIP(Draw)"] = np.trace(zip_poisson_matrix)
-        result["P_ZIP(Away Win)"] = np.triu(zip_poisson_matrix, 1).sum()
-
-        results.append(result)
+    preds_df = pd.DataFrame(data=result, index=[0])
+    preds_df.to_csv("temp.csv", index=False)
+    print(preds_df)
 
 
 def main():
-    run_benchmarking()
+    # run_benchmarking()
+    sanity_check()
 
 
 if __name__ == "__main__":

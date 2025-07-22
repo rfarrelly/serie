@@ -3,7 +3,6 @@ import pandas as pd
 import statsmodels.api as sm
 from scipy.optimize import minimize
 from scipy.stats import norm, poisson
-from utils.datetime_helpers import format_date
 
 
 class ZSDPoissonModel:
@@ -30,6 +29,7 @@ class ZSDPoissonModel:
         self._init_constants()
         self._fit_model()
         self._fit_regression()
+        self.zip_matrix = self.zip_adjustment_matrix()
 
     def _load_and_prepare_data(self, df, decay_rate=0.0015):
         df["Game Total"] = df["FTHG"] + df["FTAG"]
@@ -250,6 +250,56 @@ class ZSDPoissonModel:
         )
         return pd.DataFrame(observed) / pd.DataFrame(expected)
 
+    def predict_zip_adjusted_outcomes(self, home_team, away_team, max_goals=15):
+        idx_h = self.team_index[home_team]
+        idx_a = self.team_index[away_team]
+
+        # Ratings and adjustments
+        hrh, hra = (
+            self.optimized_home_ratings[idx_h],
+            self.optimized_home_ratings[idx_a],
+        )
+        arh, ara = (
+            self.optimized_away_ratings[idx_h],
+            self.optimized_away_ratings[idx_a],
+        )
+
+        param_h = self.opt_home_adj + hrh - hra
+        param_a = self.opt_away_adj + arh - ara
+
+        lambda_home = (
+            self.avg_home_goals + norm.ppf(self._sigmoid(param_h)) * self.std_home_goals
+        )
+        lambda_away = (
+            self.avg_away_goals + norm.ppf(self._sigmoid(param_a)) * self.std_away_goals
+        )
+
+        # Clip for numerical safety
+        lambda_home = np.clip(lambda_home, 0.01, 10)
+        lambda_away = np.clip(lambda_away, 0.01, 10)
+
+        # Base Poisson matrix
+        base_poisson = self.poisson_prob_matrix(lambda_home, lambda_away, max_goals)
+
+        # ZIP-adjusted matrix
+        zip_matrix = self.zip_matrix.values[: max_goals + 1, : max_goals + 1]
+        zip_adjusted = base_poisson * zip_matrix
+        zip_adjusted /= zip_adjusted.sum()  # Normalize
+
+        # Outcome probabilities
+        home_win = np.tril(zip_adjusted, -1).sum()
+        draw = np.trace(zip_adjusted)
+        away_win = np.triu(zip_adjusted, 1).sum()
+
+        return {
+            "lambda_home": lambda_home,
+            "lambda_away": lambda_away,
+            "poisson_matrix": zip_adjusted,
+            "P(Home Win)": home_win,
+            "P(Draw)": draw,
+            "P(Away Win)": away_win,
+        }
+
     @staticmethod
     def _sigmoid(x):
         return 1 / (1 + np.exp(-x))
@@ -257,41 +307,3 @@ class ZSDPoissonModel:
     @staticmethod
     def _safe_ppf(x, eps=1e-6):
         return norm.ppf(np.clip(x, eps, 1 - eps))
-
-
-### Single Match ###
-# matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
-# matches = format_date(matches)
-# played_matches = matches[:206].copy()
-# unplayed_matches = matches[206:]
-# model = ZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
-
-# # Core predictions from the model
-# result = model.predict_match_mov("Bournemouth", "Everton")
-
-# # Raw goal estimates
-# lambda_home = result["home_goals_est"]
-# lambda_away = result["away_goals_est"]
-
-# # Get outcome probabilities from logistic-MOV model
-# probs = model.outcome_probabilities(
-#     lambda_home - lambda_away, lambda_away - lambda_home
-# )
-# result |= probs
-
-# # Generate Poisson and ZIP-adjusted matrices
-# poisson_matrix = model.poisson_prob_matrix(lambda_home, lambda_away, max_goals=10)
-# zip_adj_matrix = model.zip_adjustment_matrix(max_goals=10)
-# zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
-
-# # Collapse to outcome probabilities
-# result["P_Poisson(Home Win)"] = np.tril(poisson_matrix, -1).sum()
-# result["P_Poisson(Draw)"] = np.trace(poisson_matrix)
-# result["P_Poisson(Away Win)"] = np.triu(poisson_matrix, 1).sum()
-
-# result["P_ZIP(Home Win)"] = np.tril(zip_poisson_matrix, -1).sum()
-# result["P_ZIP(Draw)"] = np.trace(zip_poisson_matrix)
-# result["P_ZIP(Away Win)"] = np.triu(zip_poisson_matrix, 1).sum()
-
-# preds_df = pd.DataFrame(data=result, index=[0])
-# print(preds_df)
