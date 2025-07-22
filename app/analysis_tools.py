@@ -1,6 +1,6 @@
 import numpy as np
-import pandas as pd
 from scipy.stats import poisson
+from sklearn.metrics import root_mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
 from zsd_poisson_model import ZSDPoissonModel
 
@@ -80,17 +80,68 @@ def tune_decay_rate(df, decay_rates, n_splits=5, scoring="sse"):
     return best[0], results
 
 
-files = [
-    "DATA/FBREF/Premier-League/Premier-League_2024-2025.csv",
-    "DATA/FBREF/Premier-League/Premier-League_2023-2024.csv",
-    "DATA/FBREF/Premier-League/Premier-League_2022-2023.csv",
-]
-matches = pd.concat([pd.read_csv(file, dtype={"Wk": int}) for file in files])
-decays_to_test = np.linspace(0.01, 0.1, 10)
-best_decay, cv_results = tune_decay_rate(
-    df=matches, decay_rates=decays_to_test, scoring="log_likelihood"
-)
+def benchmark_model(model_class, df, max_goals=15):
+    log_losses = []
+    brier_scores = []
+    home_goals_true = []
+    away_goals_true = []
+    home_goals_pred = []
+    away_goals_pred = []
 
-print("Best decay rate:", best_decay)
-for d, score in cv_results:
-    print(f"Decay {d:.5f} => Score: {score:.4f}")
+    model = model_class(played_matches=df)
+
+    for _, row in df.iterrows():
+        home_team = row["Home"]
+        away_team = row["Away"]
+        actual_fthg = row["FTHG"]
+        actual_ftag = row["FTAG"]
+
+        try:
+            pred = model.predict_zip_adjusted_outcomes(
+                home_team=home_team, away_team=away_team, max_goals=max_goals
+            )
+        except KeyError:
+            continue  # skip unknown teams
+
+        # Outcome classification
+        if actual_fthg > actual_ftag:
+            actual_result = "P(Home Win)"
+            actual_vector = np.array([1, 0, 0])
+        elif actual_fthg == actual_ftag:
+            actual_result = "P(Draw)"
+            actual_vector = np.array([0, 1, 0])
+        else:
+            actual_result = "P(Away Win)"
+            actual_vector = np.array([0, 0, 1])
+
+        predicted_vector = np.array(
+            [
+                pred["P(Home Win)"],
+                pred["P(Draw)"],
+                pred["P(Away Win)"],
+            ]
+        )
+
+        # Log loss
+        prob = pred.get(actual_result, 1e-10)
+        log_losses.append(-np.log(prob))
+
+        # Brier score
+        brier_scores.append(np.sum((actual_vector - predicted_vector) ** 2))
+
+        # Goal RMSE (expected goals from ZIP matrix)
+        goal_matrix = pred["poisson_matrix"]
+        est_home = np.sum(goal_matrix * np.arange(goal_matrix.shape[0])[:, None])
+        est_away = np.sum(goal_matrix * np.arange(goal_matrix.shape[1])[None, :])
+
+        home_goals_true.append(actual_fthg)
+        away_goals_true.append(actual_ftag)
+        home_goals_pred.append(est_home)
+        away_goals_pred.append(est_away)
+
+    return {
+        "log_loss": np.mean(log_losses),
+        "brier": np.mean(brier_scores),
+        "rmse_home": root_mean_squared_error(home_goals_true, home_goals_pred),
+        "rmse_away": root_mean_squared_error(away_goals_true, away_goals_pred),
+    }
