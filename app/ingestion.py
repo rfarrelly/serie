@@ -64,7 +64,6 @@ class DataIngestion:
             "Season",
             "Day",
             "Date",
-            "Time",
             "Home",
             "Score",
             "Away",
@@ -106,23 +105,19 @@ class DataIngestion:
 
         if league.is_extra:
             url = fbduk_extra_url_builder(self.config.fbduk_base_url_extra, league)
-            columns = ["Date", "Time", "Season", "Home", "Away"] + odds_columns
+            columns = ["Date", "Season", "Home", "Away"] + odds_columns
             season_extra_format = season.replace("-", "/")
         else:
             url = fbduk_main_url_builder(
                 self.config.fbduk_base_url_main, league, season
             )
-            columns = ["Date", "Time", "HomeTeam", "AwayTeam"] + odds_columns
+            columns = ["Date", "HomeTeam", "AwayTeam"] + odds_columns
 
         dir_path = self.config.get_fbduk_league_dir(league_name)
 
         data_df = pd.read_csv(url, encoding="latin-1")[columns].rename(
             columns={"HomeTeam": "Home", "AwayTeam": "Away"}
         )
-
-        if league_name in "Ekstraklasa":
-            data_df["Home"] = data_df["Home"].replace("Gornik Zabrze", "Gornik Z.")
-            data_df["Away"] = data_df["Away"].replace("Gornik Zabrze", "Gornik Z.")
 
         if "Season" in data_df.columns:
             data_df = data_df[data_df["Season"] == season_extra_format]

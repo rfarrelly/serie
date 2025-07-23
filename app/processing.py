@@ -48,10 +48,9 @@ class LeagueProcessor:
         candidates = []
 
         for fixture in fixtures.itertuples(index=False):
-            week, date, time, home_team, away_team = (
+            week, date, home_team, away_team = (
                 fixture.Wk,
                 fixture.Date,
-                fixture.Time,
                 fixture.Home,
                 fixture.Away,
             )
@@ -73,7 +72,6 @@ class LeagueProcessor:
                 {
                     "Wk": week,
                     "Date": date,
-                    "Time": time,
                     "League": self.league_name,
                     "Home": home_team,
                     "Away": away_team,
@@ -98,10 +96,9 @@ class LeagueProcessor:
         results = []
 
         for fixture in fixtures.itertuples(index=False):
-            week, date, time, home_team, away_team = (
+            week, date, home_team, away_team = (
                 fixture.Wk,
                 fixture.Date,
-                fixture.Time,
                 fixture.Home,
                 fixture.Away,
             )
@@ -110,7 +107,6 @@ class LeagueProcessor:
             # Add fixture metadata
             result["Wk"] = week
             result["Date"] = date
-            result["Time"] = time
             result["Home"] = home_team
             result["Away"] = away_team
 
@@ -166,7 +162,6 @@ def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
                 "Season",
                 "Day",
                 "Date",
-                "Time",
                 "Home",
                 "Away",
                 "FTHG",

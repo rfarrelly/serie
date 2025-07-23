@@ -57,7 +57,7 @@ def merge_historical_odds_data():
         ]
     )
 
-    fbref_historical_rpi_data = pd.read_csv("historical_rpi.csv")
+    fbref_historical_rpi_data = pd.read_csv("historical_ppi.csv")
 
     print(f"fbduk input matches (odds): {fbduk_odds_data.shape[0]}")
     print(f"fbref imput matches: {fbref_historical_rpi_data.shape[0]}")
@@ -79,9 +79,9 @@ def merge_historical_odds_data():
             on=["Date", "Home", "Away"],
             how="left",
         )
-        .drop(["Time_x", "Season_y", "Wk_y"], axis="columns")
+        .drop(["Season_y", "Wk_y"], axis="columns")
         .sort_values("Date")
-    ).rename({"Time_y": "Time", "Season_x": "Season", "Wk_x": "Wk"}, axis="columns")
+    ).rename({"Season_x": "Season", "Wk_x": "Wk"}, axis="columns")
 
     print(f"Merged historical odds size: {merged_df.shape[0]}")
     print(f"{merged_df[merged_df['PSCH'].isna()].shape[0]} unmerged historical odds")
@@ -96,7 +96,6 @@ def merge_future_odds_data():
     )[
         [
             "Date",
-            "Time",
             "Home",
             "Away",
             "PSH",
@@ -109,7 +108,6 @@ def merge_future_odds_data():
     )[
         [
             "Date",
-            "Time",
             "Home",
             "Away",
             "PSH",
@@ -132,21 +130,16 @@ def merge_future_odds_data():
     fbduk_odds_data["Home"] = fbduk_odds_data["Home"].apply(map_team_name)
     fbduk_odds_data["Away"] = fbduk_odds_data["Away"].apply(map_team_name)
 
-    merged_df = (
-        pd.merge(
-            latest_ppi,
-            fbduk_odds_data,
-            on=["Date", "Home", "Away"],
-            how="left",
-        )
-        .drop(["Time_x"], axis="columns")
-        .sort_values("Date")
-    ).rename({"Time_y": "Time"}, axis="columns")
+    merged_df = pd.merge(
+        latest_ppi,
+        fbduk_odds_data,
+        on=["Date", "Home", "Away"],
+        how="left",
+    ).sort_values("Date")
 
     columns = [
         "Wk",
         "Date",
-        "Time",
         "League",
         "Home",
         "Away",
@@ -206,7 +199,14 @@ def main():
         zsd_latest.to_csv("latest_zsd.csv", index=False)
 
     merge_future_odds_data()
-    get_historical_ppi(DEFAULT_CONFIG).to_csv("historical_rpi.csv", index=False)
+    historical_ppi = get_historical_ppi(DEFAULT_CONFIG)
+
+    # TODO: Handle matches terminated during season more generally if needs be
+    historical_ppi = historical_ppi[
+        ~historical_ppi["Home"].eq("Reus") & ~historical_ppi["Away"].eq("Reus")
+    ]
+
+    historical_ppi.to_csv("historical_ppi.csv", index=False)
     merge_historical_odds_data()
     # build_team_name_dictionary()
 

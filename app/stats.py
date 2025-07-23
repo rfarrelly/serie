@@ -13,6 +13,8 @@ def compute_ppg(df: pd.DataFrame) -> tuple[pd.DataFrame]:
         axis="columns",
     )
 
+    df = week_continuity(df)
+
     home_points = df.pivot(index="Home", columns="Wk", values="HP")
     away_points = df.pivot(index="Away", columns="Wk", values="AP")
 
@@ -64,3 +66,29 @@ def compute_points_performance_index(
         lambda x: "h" if team == x["Home"] else "a", axis=1
     )
     return combined.drop(weeks_columns, axis=1)
+
+
+def week_continuity(df: pd.DataFrame):
+    week = df["Wk"].astype(int)
+
+    # Create a cumulative offset that increases by the last known max week
+    # each time a reset is detected
+    offsets = np.zeros(len(df), dtype=int)
+    current_offset = 0
+    last_max = 0
+
+    for i in range(len(df)):
+        if i > 0 and week[i] < week[i - 1]:
+            current_offset += last_max
+        offsets[i] = current_offset
+        last_max = max(last_max, week[i])
+
+    # Apply offset to fix week numbers
+    df["Wk_adj"] = week + offsets
+
+    df = df.drop("Wk", axis=1).rename({"Wk_adj": "Wk"}, axis=1)
+    cols = ["Wk"] + [col for col in df.columns if col != "Wk"]
+    df = df[cols]
+    # if "Ekstraklasa" in df["League"].values:
+    #     breakpoint()
+    return df
