@@ -38,6 +38,7 @@ def sanity_check():
     matches = pd.read_csv("zsd_poisson_test_data.csv", dtype={"Wk": int})
     matches = format_date(matches)
     played_matches = matches[:206].copy()
+    played_matches = played_matches.sort_values("Date")
     model = ZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
     preds = model.predict_match(
         home_team="Bournemouth", away_team="Everton", max_goals=15

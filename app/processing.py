@@ -106,26 +106,7 @@ class LeagueProcessor:
                 fixture.Away,
             )
 
-            # Core predictions from the model
-            result = model.predict_match_mov(home_team, away_team)
-
-            # Raw goal estimates
-            lambda_home = result["home_goals_est"]
-            lambda_away = result["away_goals_est"]
-
-            # Get outcome probabilities from logistic-MOV model
-            probs = model.outcome_probabilities(
-                lambda_home - lambda_away, lambda_away - lambda_home
-            )
-            result |= probs
-
-            # Generate Poisson and ZIP-adjusted matrices
-            poisson_matrix = model.poisson_prob_matrix(
-                lambda_home, lambda_away, max_goals=10
-            )
-            zip_adj_matrix = model.zip_adjustment_matrix(max_goals=10)
-            zip_poisson_matrix = poisson_matrix * zip_adj_matrix.values
-
+            result = {}
             # Add fixture metadata
             result["Wk"] = week
             result["Date"] = date
@@ -133,14 +114,12 @@ class LeagueProcessor:
             result["Home"] = home_team
             result["Away"] = away_team
 
-            # Collapse to outcome probabilities
-            result["P_Poisson(Home Win)"] = np.tril(poisson_matrix, -1).sum()
-            result["P_Poisson(Draw)"] = np.trace(poisson_matrix)
-            result["P_Poisson(Away Win)"] = np.triu(poisson_matrix, 1).sum()
+            # Core predictions from the model
+            pred_result = model.predict_match(
+                home_team=home_team, away_team=away_team, max_goals=15
+            )
 
-            result["P_ZIP(Home Win)"] = np.tril(zip_poisson_matrix, -1).sum()
-            result["P_ZIP(Draw)"] = np.trace(zip_poisson_matrix)
-            result["P_ZIP(Away Win)"] = np.triu(zip_poisson_matrix, 1).sum()
+            result |= pred_result
 
             results.append(result)
 
