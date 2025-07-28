@@ -13,8 +13,6 @@ def compute_ppg(df: pd.DataFrame) -> tuple[pd.DataFrame]:
         axis="columns",
     )
 
-    df = week_continuity(df)
-
     home_points = df.pivot(index="Home", columns="Wk", values="HP")
     away_points = df.pivot(index="Away", columns="Wk", values="AP")
 
@@ -68,6 +66,7 @@ def compute_points_performance_index(
     return combined.drop(weeks_columns, axis=1)
 
 
+# May use this if we find a better odds source
 def week_continuity(df: pd.DataFrame):
     week = df["Wk"].astype(int)
 

@@ -161,42 +161,42 @@ def merge_future_odds_data():
 
 
 def main():
-    # ppi_all_leagues = []
-    # zsd_all_leagues = []
+    ppi_all_leagues = []
+    zsd_all_leagues = []
 
-    # for league in Leagues:
-    #     print(f"Processing {league.name} ({league.value['fbref_name']})")
+    for league in Leagues:
+        print(f"Processing {league.name} ({league.value['fbref_name']})")
 
-    #     processor = LeagueProcessor(league, DEFAULT_CONFIG)
+        processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
-    #     if GET_DATA == "1":
-    #         processor.get_fbref_data()
-    #         processor.get_fbduk_data()
+        if GET_DATA == "1":
+            processor.get_fbref_data()
+            processor.get_fbduk_data()
 
-    #     ppi = processor.get_points_performance_index()
+        ppi = processor.get_points_performance_index()
 
-    #     if ppi:
-    #         ppi_all_leagues.extend(ppi)
+        if ppi:
+            ppi_all_leagues.extend(ppi)
 
-    #     zsd_poisson = processor.get_zsd_poisson()
+        zsd_poisson = processor.get_zsd_poisson()
 
-    #     if zsd_poisson:
-    #         zsd_all_leagues.extend(zsd_poisson)
+        if zsd_poisson:
+            zsd_all_leagues.extend(zsd_poisson)
 
-    # if ppi_all_leagues:
-    #     print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
-    #     ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
+    if ppi_all_leagues:
+        print(f"Getting betting candidates for the period {TODAY} to {END_DATE}")
+        ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
 
-    #     ppi_latest = ppi_latest[
-    #         ppi_latest["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
-    #     ]
+        ppi_latest = ppi_latest[
+            ppi_latest["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
+        ]
 
-    #     ppi_latest.to_csv("latest_ppi.csv", index=False)
+        ppi_latest.to_csv("latest_ppi.csv", index=False)
 
-    # if zsd_all_leagues:
-    #     print(f"Getting zsd poisson data for the period {TODAY} to {END_DATE}")
-    #     zsd_latest = pd.DataFrame(zsd_all_leagues)
-    #     zsd_latest.to_csv("latest_zsd.csv", index=False)
+    if zsd_all_leagues:
+        print(f"Getting zsd poisson data for the period {TODAY} to {END_DATE}")
+        zsd_latest = pd.DataFrame(zsd_all_leagues)
+        zsd_latest.to_csv("latest_zsd.csv", index=False)
 
     # merge_future_odds_data()
     historical_ppi = get_historical_ppi(DEFAULT_CONFIG)

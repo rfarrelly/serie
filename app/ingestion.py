@@ -78,6 +78,8 @@ class DataIngestion:
         data_df["League"] = league_name
         data_df["Season"] = season
 
+        data_df = self._drop_non_regular_matches(data_df)
+
         unplayed_fixtures_df = (
             data_df[data_df["Score"].isna()][columns]
             .drop("Score", axis="columns")
@@ -132,3 +134,9 @@ class DataIngestion:
             goals = score.split("–")
             return int(goals[0]), int(goals[1])
         return 0, 0
+
+    @staticmethod
+    def _drop_non_regular_matches(df, week_col="Wk"):
+        df = df.copy()
+        max_so_far = df[week_col].cummax()
+        return df[df[week_col] == max_so_far]
