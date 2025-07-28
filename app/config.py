@@ -101,11 +101,23 @@ class Leagues(Enum):
         "fbref_name": "Eredivisie",
         "is_extra": False,
     }
-    POL = {
-        "fbref_id": 36,
-        "fbduk_id": "POL",
-        "fbref_name": "Ekstraklasa",
-        "is_extra": True,
+    BEL = {
+        "fbref_id": 37,
+        "fbduk_id": "B1",
+        "fbref_name": "Belgian-Pro-League",
+        "is_extra": False,
+    }
+    TUR = {
+        "fbref_id": 26,
+        "fbduk_id": "T1",
+        "fbref_name": "Super-Lig",
+        "is_extra": False,
+    }
+    GRE = {
+        "fbref_id": 27,
+        "fbduk_id": "G1",
+        "fbref_name": "Super-League-Greece",
+        "is_extra": False,
     }
 
     @property

@@ -101,7 +101,7 @@ class DataIngestion:
 
     def get_fbduk_data(self, league: Leagues, season: str):
         league_name = league.fbref_name
-        odds_columns = ["PSCH", "PSCD", "PSCA"]
+        odds_columns = ["PSCH", "PSCD", "PSCA", "B365CH", "B365CD", "B365CA"]
 
         if league.is_extra:
             url = fbduk_extra_url_builder(self.config.fbduk_base_url_extra, league)
