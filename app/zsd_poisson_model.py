@@ -1,3 +1,7 @@
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import Dict, Optional, Tuple
+
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
@@ -5,320 +9,418 @@ from scipy.optimize import minimize
 from scipy.stats import norm, poisson
 
 
-class ZSDPoissonModel:
-    def __init__(
-        self, teams=None, played_matches: pd.DataFrame = None, decay_rate=0.001
-    ):
-        if teams:
-            self.teams = teams
-        else:
-            self.teams = sorted(
-                list(set(played_matches["Home"]).union(played_matches["Away"]))
-            )
-        self.decay_rate = decay_rate
-        self.played_matches = self._load_and_prepare_data(
-            played_matches, decay_rate=self.decay_rate
-        )
+@dataclass
+class ModelConfig:
+    """Configuration for the soccer prediction model."""
 
-        self.team_index = {team: i for i, team in enumerate(self.teams)}
-        self.N = len(self.teams)
+    decay_rate: float = 0.001
+    max_goals: int = 15
+    eps: float = 1e-6
+    lambda_bounds: Tuple[float, float] = (0.01, 10.0)
+    param_bounds: Tuple[float, float] = (-6.0, 6.0)
+    min_matches_per_team: int = 5
 
-        self._init_constants()
-        self._fit_model()
-        self._fit_regression()
-        self.zip_matrix = self.zip_adjustment_matrix()
 
-    def _load_and_prepare_data(self, df, decay_rate=0.0015):
-        df = df.copy()
-        df["Game Total"] = df["FTHG"] + df["FTAG"]
-        df["Home MOV"] = df["FTHG"] - df["FTAG"]
+@dataclass
+class MatchPrediction:
+    """Structured output for match predictions."""
 
-        if not np.issubdtype(df["Date"].dtype, np.datetime64):
-            df["Date"] = pd.to_datetime(df["Date"])
+    home_team: str
+    away_team: str
+    lambda_home: float
+    lambda_away: float
+    mov_prediction: float
+    mov_std_error: float
+    prob_home_win: float
+    prob_draw: float
+    prob_away_win: float
+    model_type: str
 
-        df = df.sort_values("Date").reset_index(drop=True)
-        self.latest_date = df["Date"].max()
 
-        match_index = np.arange(len(df))[::-1]
-        df["Weight"] = np.exp(-decay_rate * match_index)
-        df["Weight"] *= len(df) / df["Weight"].sum()
+class BasePredictor(ABC):
+    """Abstract base class for different prediction methods."""
 
-        return df
+    @abstractmethod
+    def predict_outcome_probabilities(
+        self, lambda_home: float, lambda_away: float
+    ) -> Tuple[float, float, float]:
+        """Return (P(Home), P(Draw), P(Away))"""
+        pass
 
-    def _init_constants(self):
-        self.avg_home_goals = self.played_matches["FTHG"].mean()
-        self.std_home_goals = self.played_matches["FTHG"].std()
-        self.avg_away_goals = self.played_matches["FTAG"].mean()
-        self.std_away_goals = self.played_matches["FTAG"].std()
 
-    def _get_params_vec(self):
-        return np.zeros(2 * self.N + 2)
+class PoissonPredictor(BasePredictor):
+    """Standard Poisson prediction."""
 
-    def _unpack_params(self, params):
-        attack_ratings = params[: self.N]
-        defense_ratings = params[self.N : 2 * self.N]
-        home_adj, away_adj = params[-2:]
-        return attack_ratings, defense_ratings, home_adj, away_adj
+    def __init__(self, config: ModelConfig):
+        self.config = config
 
-    def _compute_sse_total(self, params):
-        attack_ratings, defense_ratings, home_adj, away_adj = self._unpack_params(
-            params
-        )
+    def predict_outcome_probabilities(
+        self, lambda_home: float, lambda_away: float
+    ) -> Tuple[float, float, float]:
+        prob_matrix = self._poisson_prob_matrix(lambda_home, lambda_away)
+        prob_matrix /= prob_matrix.sum()
 
-        atk_h = (
-            self.played_matches["Home"]
-            .map(lambda t: attack_ratings[self.team_index[t]])
-            .values
-        )
-        def_a = (
-            self.played_matches["Away"]
-            .map(lambda t: defense_ratings[self.team_index[t]])
-            .values
-        )
-        atk_a = (
-            self.played_matches["Away"]
-            .map(lambda t: attack_ratings[self.team_index[t]])
-            .values
-        )
-        def_h = (
-            self.played_matches["Home"]
-            .map(lambda t: defense_ratings[self.team_index[t]])
-            .values
-        )
+        home_win = np.tril(prob_matrix, -1).sum()
+        draw = np.trace(prob_matrix)
+        away_win = np.triu(prob_matrix, 1).sum()
 
-        param_h = np.clip(home_adj + atk_h - def_a, -6, 6)
-        param_a = np.clip(away_adj + atk_a - def_h, -6, 6)
+        return home_win, draw, away_win
 
-        est_home_goals = (
-            self.avg_home_goals
-            + self._safe_ppf(self._sigmoid(param_h)) * self.std_home_goals
-        )
-        est_away_goals = (
-            self.avg_away_goals
-            + self._safe_ppf(self._sigmoid(param_a)) * self.std_away_goals
-        )
-
-        error_sq_home = (est_home_goals - self.played_matches["FTHG"].values) ** 2
-        error_sq_away = (est_away_goals - self.played_matches["FTAG"].values) ** 2
-
-        weights = self.played_matches["Weight"].values
-        weighted_error = weights * (error_sq_home + error_sq_away)
-
-        return np.sum(weighted_error)
-
-    def _fit_model(self):
-        initial_params = self._get_params_vec()
-        result = minimize(self._compute_sse_total, initial_params, method="L-BFGS-B")
-
-        if not result.success or np.any(np.isnan(result.x)):
-            raise RuntimeError(f"Optimization failed: {result.message}")
-
-        self.optimized_params = result.x
-        (
-            self.attack_ratings,
-            self.defense_ratings,
-            self.opt_home_adj,
-            self.opt_away_adj,
-        ) = self._unpack_params(self.optimized_params)
-
-    def _fit_regression(self):
-        raw_mov = self._get_raw_mov()
-        y = self.played_matches["Home MOV"].values
-        X = sm.add_constant(raw_mov)
-        self.reg_model = sm.OLS(y, X).fit()
-        self.intercept, self.slope = self.reg_model.params
-        self.model_error = np.sqrt(self.reg_model.mse_resid)
-
-    def _get_raw_mov(self):
-        atk_h = (
-            self.played_matches["Home"]
-            .map(lambda t: self.attack_ratings[self.team_index[t]])
-            .values
-        )
-        def_a = (
-            self.played_matches["Away"]
-            .map(lambda t: self.defense_ratings[self.team_index[t]])
-            .values
-        )
-        atk_a = (
-            self.played_matches["Away"]
-            .map(lambda t: self.attack_ratings[self.team_index[t]])
-            .values
-        )
-        def_h = (
-            self.played_matches["Home"]
-            .map(lambda t: self.defense_ratings[self.team_index[t]])
-            .values
-        )
-
-        param_h = np.clip(self.opt_home_adj + atk_h - def_a, -6, 6)
-        param_a = np.clip(self.opt_away_adj + atk_a - def_h, -6, 6)
-
-        est_home_goals = (
-            self.avg_home_goals
-            + self._safe_ppf(self._sigmoid(param_h)) * self.std_home_goals
-        )
-        est_away_goals = (
-            self.avg_away_goals
-            + self._safe_ppf(self._sigmoid(param_a)) * self.std_away_goals
-        )
-
-        return est_home_goals - est_away_goals
-
-    def predict_match_mov(self, home_team, away_team):
-        idx_h = self.team_index[home_team]
-        idx_a = self.team_index[away_team]
-
-        atk_h = self.attack_ratings[idx_h]
-        atk_a = self.attack_ratings[idx_a]
-        def_h = self.defense_ratings[idx_h]
-        def_a = self.defense_ratings[idx_a]
-
-        param_h = np.clip(self.opt_home_adj + atk_h - def_a, -6, 6)
-        param_a = np.clip(self.opt_away_adj + atk_a - def_h, -6, 6)
-
-        est_home_goals = (
-            self.avg_home_goals
-            + self._safe_ppf(self._sigmoid(param_h)) * self.std_home_goals
-        )
-        est_away_goals = (
-            self.avg_away_goals
-            + self._safe_ppf(self._sigmoid(param_a)) * self.std_away_goals
-        )
-
-        est_home_goals = max(est_home_goals, 1e-3)
-        est_away_goals = max(est_away_goals, 1e-3)
-
-        raw_mov = est_home_goals - est_away_goals
-        predicted_mov = self.intercept + self.slope * raw_mov
-
-        return {
-            "home_goals_est": est_home_goals,
-            "away_goals_est": est_away_goals,
-            "raw_mov": raw_mov,
-            "predicted_mov": predicted_mov,
-            "model_error": self.model_error,
-        }
-
-    def outcome_probabilities(self, spread_home, spread_away):
-        p_home_win = 1 - norm.cdf(0.5, loc=spread_home, scale=self.model_error)
-        p_away_win = 1 - norm.cdf(0.5, loc=spread_away, scale=self.model_error)
-        p_draw = 1 - p_home_win - p_away_win
-        return {
-            "P_MOV(H)": p_home_win,
-            "P_MOV(D)": p_draw,
-            "P_MOV(A)": p_away_win,
-        }
-
-    def poisson_prob_matrix(self, lambda_home, lambda_away, max_goals=15):
-        home_goals = np.arange(0, max_goals + 1)
-        away_goals = np.arange(0, max_goals + 1)
+    def _poisson_prob_matrix(
+        self, lambda_home: float, lambda_away: float
+    ) -> np.ndarray:
+        home_goals = np.arange(0, self.config.max_goals + 1)
+        away_goals = np.arange(0, self.config.max_goals + 1)
         home_probs = poisson.pmf(home_goals, lambda_home)
         away_probs = poisson.pmf(away_goals, lambda_away)
         return np.outer(home_probs, away_probs)
 
-    def zip_adjustment_matrix(self, max_goals=15):
-        home_percent = (
-            self.played_matches["FTHG"].value_counts(normalize=True).sort_index()
+
+class ZIPPredictor(BasePredictor):
+    """Zero-inflated Poisson with dynamic adjustment."""
+
+    def __init__(self, config: ModelConfig, historical_data: pd.DataFrame):
+        self.config = config
+        self.adjustment_matrix = self._compute_adjustment_matrix(historical_data)
+
+    def predict_outcome_probabilities(
+        self, lambda_home: float, lambda_away: float
+    ) -> Tuple[float, float, float]:
+        base_poisson = PoissonPredictor(self.config)._poisson_prob_matrix(
+            lambda_home, lambda_away
         )
-        away_percent = (
-            self.played_matches["FTAG"].value_counts(normalize=True).sort_index()
-        )
-        idx = np.arange(0, max_goals + 1)
+
+        # Apply adjustment matrix
+        adjusted_matrix = base_poisson * self.adjustment_matrix
+        adjusted_matrix /= adjusted_matrix.sum()
+
+        home_win = np.tril(adjusted_matrix, -1).sum()
+        draw = np.trace(adjusted_matrix)
+        away_win = np.triu(adjusted_matrix, 1).sum()
+
+        return home_win, draw, away_win
+
+    def _compute_adjustment_matrix(self, data: pd.DataFrame) -> np.ndarray:
+        """Compute adjustment matrix from recent historical data."""
+        # Use more recent data for adjustment (e.g., last 200 matches)
+        recent_data = data.tail(min(200, len(data)))
+
+        home_dist = recent_data["FTHG"].value_counts(normalize=True).sort_index()
+        away_dist = recent_data["FTAG"].value_counts(normalize=True).sort_index()
+
+        idx = np.arange(0, self.config.max_goals + 1)
         observed = np.outer(
-            home_percent.reindex(idx, fill_value=0),
-            away_percent.reindex(idx, fill_value=0),
-        )
-        expected = self.poisson_prob_matrix(
-            self.avg_home_goals, self.avg_away_goals, max_goals
-        )
-        return pd.DataFrame(observed) / pd.DataFrame(expected)
-
-    def predict_zip_adjusted_outcomes(self, home_team, away_team, max_goals=15):
-        idx_h = self.team_index[home_team]
-        idx_a = self.team_index[away_team]
-
-        atk_h = self.attack_ratings[idx_h]
-        atk_a = self.attack_ratings[idx_a]
-        def_h = self.defense_ratings[idx_h]
-        def_a = self.defense_ratings[idx_a]
-
-        param_h = self.opt_home_adj + atk_h - def_a
-        param_a = self.opt_away_adj + atk_a - def_h
-
-        lambda_home = (
-            self.avg_home_goals + norm.ppf(self._sigmoid(param_h)) * self.std_home_goals
-        )
-        lambda_away = (
-            self.avg_away_goals + norm.ppf(self._sigmoid(param_a)) * self.std_away_goals
+            home_dist.reindex(idx, fill_value=0), away_dist.reindex(idx, fill_value=0)
         )
 
-        lambda_home = np.clip(lambda_home, 0.01, 10)
-        lambda_away = np.clip(lambda_away, 0.01, 10)
+        avg_home = recent_data["FTHG"].mean()
+        avg_away = recent_data["FTAG"].mean()
+        expected = PoissonPredictor(self.config)._poisson_prob_matrix(
+            avg_home, avg_away
+        )
 
-        base_poisson = self.poisson_prob_matrix(lambda_home, lambda_away, max_goals)
-        zip_matrix = self.zip_matrix.values[: max_goals + 1, : max_goals + 1]
-        zip_adjusted = base_poisson * zip_matrix
-        zip_adjusted /= zip_adjusted.sum()
+        # Smooth the adjustment to avoid extreme values
+        adjustment = np.where(expected > 1e-6, observed / expected, 1.0)
+        return np.clip(adjustment, 0.1, 5.0)  # Prevent extreme adjustments
 
-        home_win = np.tril(zip_adjusted, -1).sum()
-        draw = np.trace(zip_adjusted)
-        away_win = np.triu(zip_adjusted, 1).sum()
 
-        return {
-            "lambda_home": lambda_home,
-            "lambda_away": lambda_away,
-            "poisson_matrix": zip_adjusted,
-            "P(Home Win)": home_win,
-            "P(Draw)": draw,
-            "P(Away Win)": away_win,
+class ZSDPoissonModel:
+    """Improved soccer prediction model with cleaner architecture."""
+
+    def __init__(self, config: Optional[ModelConfig] = None):
+        self.config = config or ModelConfig()
+        self.teams = []
+        self.team_index = {}
+        self.attack_ratings = None
+        self.defense_ratings = None
+        self.home_advantage = None
+        self.away_adjustment = None
+        self.mov_model = None
+        self.predictors = {}
+
+    def fit(self, matches_df: pd.DataFrame) -> None:
+        """Fit the model to historical match data."""
+        self.data = self._prepare_data(matches_df)
+        self._validate_data()
+        self._initialize_teams()
+        self._fit_ratings()
+        self._fit_mov_model()
+        self._initialize_predictors()
+
+    def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Clean and prepare the match data."""
+        df = df.copy()
+
+        # Ensure date column
+        if not np.issubdtype(df["Date"].dtype, np.datetime64):
+            df["Date"] = pd.to_datetime(df["Date"])
+
+        # Add derived columns
+        df["Home_MOV"] = df["FTHG"] - df["FTAG"]
+        df["Total_Goals"] = df["FTHG"] + df["FTAG"]
+
+        # Sort by date and add time weights
+        df = df.sort_values("Date").reset_index(drop=True)
+        self.latest_date = df["Date"].max()
+
+        # Exponential decay weighting (more recent = higher weight)
+        match_index = np.arange(len(df))[::-1]
+        df["Weight"] = np.exp(-self.config.decay_rate * match_index)
+        df["Weight"] *= len(df) / df["Weight"].sum()  # Normalize
+
+        return df
+
+    def _validate_data(self) -> None:
+        """Validate that we have sufficient data quality."""
+        required_cols = ["Home", "Away", "FTHG", "FTAG", "Date"]
+        missing_cols = [col for col in required_cols if col not in self.data.columns]
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
+
+        # Check for teams with insufficient matches
+        all_teams = list(set(self.data["Home"]).union(set(self.data["Away"])))
+        for team in all_teams:
+            team_matches = len(
+                self.data[(self.data["Home"] == team) | (self.data["Away"] == team)]
+            )
+            if team_matches < self.config.min_matches_per_team:
+                print(f"Warning: {team} has only {team_matches} matches")
+
+    def _initialize_teams(self) -> None:
+        """Initialize team indexing."""
+        self.teams = sorted(list(set(self.data["Home"]).union(set(self.data["Away"]))))
+        self.team_index = {team: i for i, team in enumerate(self.teams)}
+        self.n_teams = len(self.teams)
+
+    def _fit_ratings(self) -> None:
+        """Fit attack/defense ratings using optimization."""
+        # Initialize parameters: [attack_ratings, defense_ratings, home_adv, away_adj]
+        initial_params = np.zeros(2 * self.n_teams + 2)
+
+        try:
+            result = minimize(
+                self._objective_function,
+                initial_params,
+                method="L-BFGS-B",
+                options={"maxiter": 1000},
+            )
+
+            if not result.success:
+                print(f"Warning: Optimization may not have converged: {result.message}")
+
+            # Unpack optimized parameters
+            self.attack_ratings = result.x[: self.n_teams]
+            self.defense_ratings = result.x[self.n_teams : 2 * self.n_teams]
+            self.home_advantage = result.x[-2]
+            self.away_adjustment = result.x[-1]
+
+        except Exception as e:
+            raise RuntimeError(f"Model fitting failed: {str(e)}")
+
+    def _objective_function(self, params: np.ndarray) -> float:
+        """Objective function for rating optimization."""
+        attack_ratings = params[: self.n_teams]
+        defense_ratings = params[self.n_teams : 2 * self.n_teams]
+        home_adv, away_adj = params[-2:]
+
+        # Get team indices for all matches
+        home_indices = self.data["Home"].map(self.team_index).values
+        away_indices = self.data["Away"].map(self.team_index).values
+
+        # Compute expected goals
+        home_strength = (
+            home_adv + attack_ratings[home_indices] - defense_ratings[away_indices]
+        )
+        away_strength = (
+            away_adj + attack_ratings[away_indices] - defense_ratings[home_indices]
+        )
+
+        # Clip to prevent extreme values
+        home_strength = np.clip(home_strength, *self.config.param_bounds)
+        away_strength = np.clip(away_strength, *self.config.param_bounds)
+
+        # Convert to expected goals using consistent transformation
+        home_goals_pred = self._strength_to_goals(home_strength, is_home=True)
+        away_goals_pred = self._strength_to_goals(away_strength, is_home=False)
+
+        # Weighted squared error
+        home_error = (home_goals_pred - self.data["FTHG"].values) ** 2
+        away_error = (away_goals_pred - self.data["FTAG"].values) ** 2
+        weights = self.data["Weight"].values
+
+        return np.sum(weights * (home_error + away_error))
+
+    def _strength_to_goals(self, strength: np.ndarray, is_home: bool) -> np.ndarray:
+        """Convert team strength to expected goals."""
+        if is_home:
+            baseline = self.data["FTHG"].mean()
+            std_dev = self.data["FTHG"].std()
+        else:
+            baseline = self.data["FTAG"].mean()
+            std_dev = self.data["FTAG"].std()
+
+        # Use sigmoid to map strength to probability, then inverse normal
+        prob = self._sigmoid(strength)
+        prob = np.clip(prob, self.config.eps, 1 - self.config.eps)
+        z_score = norm.ppf(prob)
+
+        return baseline + z_score * std_dev
+
+    def _fit_mov_model(self) -> None:
+        """Fit margin of victory regression model."""
+        # Compute raw MOV predictions from ratings
+        raw_mov = self._compute_raw_mov()
+        actual_mov = self.data["Home_MOV"].values
+
+        # Fit linear regression
+        X = sm.add_constant(raw_mov)
+        weights = self.data["Weight"].values
+        self.mov_model = sm.WLS(actual_mov, X, weights=weights).fit()
+
+        self.mov_intercept = self.mov_model.params[0]
+        self.mov_slope = self.mov_model.params[1]
+        self.mov_std_error = np.sqrt(self.mov_model.mse_resid)
+
+    def _compute_raw_mov(self) -> np.ndarray:
+        """Compute raw margin of victory from current ratings."""
+        home_indices = self.data["Home"].map(self.team_index).values
+        away_indices = self.data["Away"].map(self.team_index).values
+
+        home_goals = self._predict_goals(home_indices, away_indices, is_home=True)
+        away_goals = self._predict_goals(away_indices, home_indices, is_home=False)
+
+        return home_goals - away_goals
+
+    def _predict_goals(
+        self,
+        attacking_indices: np.ndarray,
+        defending_indices: np.ndarray,
+        is_home: bool,
+    ) -> np.ndarray:
+        """Predict goals for given team matchups."""
+        if is_home:
+            strength = (
+                self.home_advantage
+                + self.attack_ratings[attacking_indices]
+                - self.defense_ratings[defending_indices]
+            )
+        else:
+            strength = (
+                self.away_adjustment
+                + self.attack_ratings[attacking_indices]
+                - self.defense_ratings[defending_indices]
+            )
+
+        strength = np.clip(strength, *self.config.param_bounds)
+        return self._strength_to_goals(strength, is_home)
+
+    def _initialize_predictors(self) -> None:
+        """Initialize different prediction methods."""
+        self.predictors = {
+            "poisson": PoissonPredictor(self.config),
+            "zip": ZIPPredictor(self.config, self.data),
         }
 
-    def predict_match(self, home_team: str, away_team: str, max_goals=15) -> dict:
-        mov_pred = self.predict_match_mov(home_team, away_team)
+    def predict_match(
+        self, home_team: str, away_team: str, method: str = "zip"
+    ) -> MatchPrediction:
+        """Predict a single match outcome."""
+        if home_team not in self.team_index or away_team not in self.team_index:
+            raise ValueError(f"Unknown team(s): {home_team}, {away_team}")
 
-        poisson = self.poisson_prob_matrix(
-            mov_pred["home_goals_est"], mov_pred["away_goals_est"], max_goals
+        if method not in self.predictors:
+            raise ValueError(f"Unknown prediction method: {method}")
+
+        # Get team indices
+        home_idx = self.team_index[home_team]
+        away_idx = self.team_index[away_team]
+
+        # Predict expected goals (lambdas)
+        lambda_home = self._predict_goals(
+            np.array([home_idx]), np.array([away_idx]), is_home=True
+        )[0]
+        lambda_away = self._predict_goals(
+            np.array([away_idx]), np.array([home_idx]), is_home=False
+        )[0]
+
+        # Ensure positive lambdas
+        lambda_home = max(lambda_home, self.config.lambda_bounds[0])
+        lambda_away = max(lambda_away, self.config.lambda_bounds[0])
+
+        # Predict MOV
+        raw_mov = lambda_home - lambda_away
+        predicted_mov = self.mov_intercept + self.mov_slope * raw_mov
+
+        # Get outcome probabilities
+        prob_home, prob_draw, prob_away = self.predictors[
+            method
+        ].predict_outcome_probabilities(lambda_home, lambda_away)
+
+        return MatchPrediction(
+            home_team=home_team,
+            away_team=away_team,
+            lambda_home=lambda_home,
+            lambda_away=lambda_away,
+            mov_prediction=predicted_mov,
+            mov_std_error=self.mov_std_error,
+            prob_home_win=prob_home,
+            prob_draw=prob_draw,
+            prob_away_win=prob_away,
+            model_type=method,
         )
-        poisson /= poisson.sum()
-        poisson_home = np.tril(poisson, -1).sum()
-        poisson_draw = np.trace(poisson)
-        poisson_away = np.triu(poisson, 1).sum()
 
-        zip_pred = self.predict_zip_adjusted_outcomes(
-            home_team, away_team, max_goals=max_goals
-        )
-        mov_probs = self.outcome_probabilities(
-            spread_home=mov_pred["raw_mov"], spread_away=-mov_pred["raw_mov"]
-        )
-
-        row = {
-            "Home": home_team,
-            "Away": away_team,
-            "MOV_HomeGoals": mov_pred["home_goals_est"],
-            "MOV_AwayGoals": mov_pred["away_goals_est"],
-            "MOV_Raw": mov_pred["raw_mov"],
-            "MOV_Adjusted": mov_pred["predicted_mov"],
-            "P_MOV(H)": mov_probs["P_MOV(H)"],
-            "P_MOV(D)": mov_probs["P_MOV(D)"],
-            "P_MOV(A)": mov_probs["P_MOV(A)"],
-            "P_Poisson(H)": poisson_home,
-            "P_Poisson(D)": poisson_draw,
-            "P_Poisson(A)": poisson_away,
-            "P_ZIP(H)": zip_pred["P(Home Win)"],
-            "P_ZIP(D)": zip_pred["P(Draw)"],
-            "P_ZIP(A)": zip_pred["P(Away Win)"],
-            "P_ZIP_ADJ(H)": zip_pred["P(Home Win)"],
-            "P_ZIP_ADJ(D)": zip_pred["P(Draw)"],
-            "P_ZIP_ADJ(A)": zip_pred["P(Away Win)"],
-        }
-
-        return row
+    def get_team_ratings(self) -> pd.DataFrame:
+        """Return current team ratings."""
+        return pd.DataFrame(
+            {
+                "Team": self.teams,
+                "Attack_Rating": self.attack_ratings,
+                "Defense_Rating": self.defense_ratings,
+                "Net_Rating": self.attack_ratings - self.defense_ratings,
+            }
+        ).sort_values("Net_Rating", ascending=False)
 
     @staticmethod
-    def _sigmoid(x):
-        return 1 / (1 + np.exp(-x))
+    def _sigmoid(x: np.ndarray) -> np.ndarray:
+        """Stable sigmoid function."""
+        return np.where(x >= 0, 1 / (1 + np.exp(-x)), np.exp(x) / (1 + np.exp(x)))
 
-    @staticmethod
-    def _safe_ppf(x, eps=1e-6):
-        return norm.ppf(np.clip(x, eps, 1 - eps))
+
+# Example usage and testing
+if __name__ == "__main__":
+    # Create sample data for testing
+    np.random.seed(42)
+    teams = ["Team_A", "Team_B", "Team_C", "Team_D"]
+    n_matches = 100
+
+    sample_data = []
+    for i in range(n_matches):
+        home = np.random.choice(teams)
+        away = np.random.choice([t for t in teams if t != home])
+        home_goals = np.random.poisson(1.5)
+        away_goals = np.random.poisson(1.2)
+
+        sample_data.append(
+            {
+                "Date": pd.Timestamp("2024-01-01") + pd.Timedelta(days=i),
+                "Home": home,
+                "Away": away,
+                "FTHG": home_goals,
+                "FTAG": away_goals,
+            }
+        )
+
+    df = pd.DataFrame(sample_data)
+
+    # Fit model
+    config = ModelConfig(decay_rate=0.001)
+    model = ZSDPoissonModel(config)
+    model.fit(df)
+
+    # Make prediction
+    prediction = model.predict_match("Team_A", "Team_B", method="zip")
+    print(f"Prediction: {prediction}")
+
+    # Show team ratings
+    ratings = model.get_team_ratings()
+    print(f"\nTeam Ratings:\n{ratings}")
