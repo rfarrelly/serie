@@ -22,6 +22,7 @@ class BackTestConfig:
     betting_threshold: float = 0.02
     stake_size: float = 1.0
     max_stake_fraction: float = 0.05  # Max fraction of bankroll per bet
+    ppi_filter_top_n: int = 4  # New: Number of top matches to filter by PPI_Diff
 
 
 @dataclass
@@ -340,6 +341,155 @@ class ImprovedBacktester:
             weekly_performance=weekly_performance_df,
         )
 
+    def backtest_ppi_filtered_strategy(
+        self,
+        data: pd.DataFrame,
+        model_class: Callable,
+        train_season: str,
+        test_season: str,
+        league: str,
+        model_params: Optional[Dict] = None,
+        top_n_ppi_matches: Optional[int] = None,  # Allow override from config
+    ) -> BackTestResults:
+        """
+        Runs a backtest strategy that filters matches based on PPI_Diff being close to zero,
+        then bets on the top N matches with the lowest absolute PPI_Diff.
+        """
+        top_n_ppi_matches = top_n_ppi_matches or self.config.ppi_filter_top_n
+
+        # Filter and prepare data
+        train_data = (
+            data[(data["Season"] == train_season) & (data["League"] == league)]
+            .copy()
+            .sort_values(["Date"])
+        )
+
+        test_data = (
+            data[(data["Season"] == test_season) & (data["League"] == league)]
+            .copy()
+            .sort_values(["Wk", "Date"])
+        )
+
+        if len(train_data) == 0 or len(test_data) == 0:
+            raise ValueError(
+                f"Insufficient data for {league} {train_season}/{test_season}"
+            )
+
+        all_predictions = []
+        weekly_metrics = []
+
+        print(
+            f"Backtesting PPI-filtered strategy for {league}: {train_season} -> {test_season}"
+        )
+        print(f"Training matches: {len(train_data)}, Test matches: {len(test_data)}")
+        print(
+            f"Filtering for top {top_n_ppi_matches} matches by lowest absolute PPI_Diff per week."
+        )
+
+        # Get unique weeks for testing
+        test_weeks = sorted(test_data["Wk"].unique())
+
+        # Reset betting simulator for this new strategy
+        self.betting_simulator = BettingSimulator(self.config)
+
+        for week_num, week in enumerate(test_weeks, 1):
+            if week_num < self.config.min_training_weeks:
+                continue
+
+            try:
+                # Prepare training data (previous season + previous weeks in test season)
+                past_test_data = test_data[test_data["Wk"] < week]
+                combined_training = pd.concat(
+                    [train_data, past_test_data], ignore_index=True
+                )
+
+                # Fit model
+                model_params = model_params or {}
+                if "teams" in model_params:
+                    del model_params["teams"]
+
+                model = model_class(**model_params)
+                model.fit(combined_training)
+
+                # Get current week matches
+                week_matches = test_data[test_data["Wk"] == week].copy()
+
+                # List to hold all predictions for the week before filtering
+                current_week_all_predictions = []
+
+                # Predict for all matches in the current week
+                for _, match in week_matches.iterrows():
+                    prediction_result = self._predict_single_match(model, match)
+                    if prediction_result:
+                        current_week_all_predictions.append(prediction_result)
+
+                if not current_week_all_predictions:
+                    print(f"Week {week}: No predictions generated.")
+                    continue
+
+                week_predictions_df = pd.DataFrame(current_week_all_predictions)
+
+                # Filter by PPI_Diff: take top N matches with lowest absolute PPI_Diff
+                # Ensure 'PPI_Diff' column exists and is not NaN
+                if (
+                    "PPI_Diff" in week_predictions_df.columns
+                    and not week_predictions_df["PPI_Diff"].isnull().all()
+                ):
+                    week_predictions_df["abs_ppi_diff"] = week_predictions_df[
+                        "PPI_Diff"
+                    ].abs()
+                    filtered_matches = week_predictions_df.sort_values(
+                        "abs_ppi_diff"
+                    ).head(top_n_ppi_matches)
+                else:
+                    print(
+                        f"Warning: 'PPI_Diff' not found or all NaN for week {week}. Skipping PPI filter."
+                    )
+                    # If PPI_Diff is not available, proceed with all matches (or handle as per policy)
+                    # For this case, let's just use all available predictions if PPI_Diff is missing.
+                    filtered_matches = week_predictions_df.copy()
+
+                week_betting_results = []
+                for _, prediction_row in filtered_matches.iterrows():
+                    betting_result = self._evaluate_betting_opportunity(
+                        prediction_row.to_dict(), prediction_row["Actual_Outcome"]
+                    )
+                    if betting_result:
+                        week_betting_results.extend(betting_result)
+
+                all_predictions.extend(
+                    filtered_matches.to_dict(orient="records")
+                )  # Add filtered predictions to overall list
+
+                # Calculate weekly metrics for the FILTERED matches that were considered for betting
+                if not filtered_matches.empty:
+                    week_metrics = self._calculate_weekly_metrics(
+                        filtered_matches, week
+                    )
+                    weekly_metrics.append(week_metrics)
+
+                print(
+                    f"Week {week}: {len(filtered_matches)} predictions considered, {len(week_betting_results)} bets placed"
+                )
+
+            except Exception as e:
+                print(f"Error in week {week}: {str(e)}")
+                continue
+
+        # Compile results
+        predictions_df = pd.DataFrame(all_predictions)
+        weekly_performance_df = pd.DataFrame(weekly_metrics)
+
+        # Calculate overall metrics
+        overall_metrics = self._calculate_overall_metrics(predictions_df)
+
+        return BackTestResults(
+            predictions_df=predictions_df,
+            betting_results=self.betting_simulator.betting_history,
+            metrics=overall_metrics,
+            weekly_performance=weekly_performance_df,
+        )
+
     def _predict_single_match(self, model, match_row: pd.Series) -> Optional[Dict]:
         """Generate prediction for a single match."""
         try:
@@ -459,9 +609,7 @@ class ImprovedBacktester:
             or np.any(np.isnan(fair_probs))
             or np.any(np.isnan(odds))
         ):
-            print(
-                f"Skipping bet for {prediction['Home']} vs {prediction['Away']} due to NaN probabilities/odds."
-            )
+            # print(f"Skipping bet for {prediction['Home']} vs {prediction['Away']} due to NaN probabilities/odds.")
             return []
 
         # Debugging print for a match being evaluated
@@ -815,6 +963,7 @@ def run_backtest_example():
         calibration_method="logistic",
         betting_threshold=0.025,
         stake_size=1.0,
+        ppi_filter_top_n=4,  # Set the default for PPI filtering
     )
 
     # Create backtester
@@ -826,9 +975,12 @@ def run_backtest_example():
         kwargs.pop("teams", None)
         return ZSDPoissonModel(model_config)
 
-    # Run backtest
+    # Run base backtest
+    print("\n" + "=" * 60)
+    print("Running Base Backtest Example...")
+    print("=" * 60)
     try:
-        results = backtester.backtest_cross_season(
+        base_results = backtester.backtest_cross_season(
             data=matches,
             model_class=ZSDPoissonModelWithConfig,
             train_season="2023-2024",
@@ -838,10 +990,10 @@ def run_backtest_example():
 
         # Print results
         print("\n" + "=" * 60)
-        print("BACKTEST RESULTS")
+        print("BASE BACKTEST RESULTS")
         print("=" * 60)
 
-        metrics = results.metrics
+        metrics = base_results.metrics
         print(f"\nModel Performance:")
         print(f"  Accuracy: {metrics.get('accuracy', 0):.3f}")
         print(f"  Log Loss: {metrics.get('log_loss', 0):.4f}")
@@ -854,12 +1006,14 @@ def run_backtest_example():
         print(f"  ROI: {metrics.get('roi_percent', 0):.2f}%")
         print(f"  Win Rate: {metrics.get('win_rate', 0):.1f}%")
         print(f"  Average Edge: {metrics.get('avg_edge', 0):.3f}")
-        print(f"  Final Bankroll: ${results.metrics.get('final_bankroll', 100):.2f}")
+        print(
+            f"  Final Bankroll: ${base_results.metrics.get('final_bankroll', 100):.2f}"
+        )
 
         # Show some sample predictions
-        print(f"\nSample Predictions:")
+        print(f"\nSample Predictions (Base Model):")
         print(
-            results.predictions_df[
+            base_results.predictions_df[
                 [
                     "Date",
                     "Home",
@@ -873,7 +1027,7 @@ def run_backtest_example():
         )
 
         # Show betting results if any
-        if results.betting_results:
+        if base_results.betting_results:
             betting_df = pd.DataFrame(
                 [
                     {
@@ -885,22 +1039,19 @@ def run_backtest_example():
                         "Profit": bet.profit,
                         "Edge": bet.edge,
                     }
-                    for bet in results.betting_results[:10]
+                    for bet in base_results.betting_results[:10]
                 ]
             )
 
-            print(f"\nSample Bets:")
+            print(f"\nSample Bets (Base Model):")
             print(betting_df)
 
         # Save results to CSV
-        backtester.save_betting_results_to_csv(results, "base_betting_results.csv")
-        backtester.save_predictions_to_csv(results, "base_predictions.csv")
-
-        return results
+        backtester.save_betting_results_to_csv(base_results, "base_betting_results.csv")
+        backtester.save_predictions_to_csv(base_results, "base_predictions.csv")
 
     except Exception as e:
-        print(f"Error running backtest: {e}")
-        return None
+        print(f"Error running base backtest: {e}")
 
 
 def run_calibration_example():
@@ -927,10 +1078,13 @@ def run_calibration_example():
         kwargs.pop("teams", None)
         return ZSDPoissonModel(model_config)
 
+    print("\n" + "=" * 60)
+    print("Running Calibration Example...")
+    print("=" * 60)
     try:
         # Run backtest with calibration
         # Pass all available PPI columns to ensure they are carried through
-        results = backtester.backtest_with_calibration(
+        results_calibrated = backtester.backtest_with_calibration(
             data=matches,
             model_class=ZSDPoissonModelWithConfig,
             train_season="2023-2024",
@@ -941,22 +1095,133 @@ def run_calibration_example():
         )
 
         # Print comparison
-        backtester.print_results_summary(results)
+        backtester.print_results_summary(results_calibrated)
 
         # Save results to CSV
-        if "calibrated" in results:
+        if "calibrated" in results_calibrated:
             backtester.save_betting_results_to_csv(
-                results["calibrated"], "calibrated_betting_results.csv"
+                results_calibrated["calibrated"], "calibrated_betting_results.csv"
             )
             backtester.save_predictions_to_csv(
-                results["calibrated"], "calibrated_predictions.csv"
+                results_calibrated["calibrated"], "calibrated_predictions.csv"
             )
-
-        return results
 
     except Exception as e:
         print(f"Error running calibration example: {e}")
-        return None
+
+
+def run_ppi_filtered_example():
+    """New example: running backtest with PPI-filtered strategy."""
+
+    matches = pd.read_csv("historical_ppi_and_odds.csv", dtype={"Wk": int})
+
+    # Ensure 'PPI_Diff' column exists in the data
+    if "PPI_Diff" not in matches.columns:
+        print(
+            "Error: 'PPI_Diff' column not found in the historical data. Cannot run PPI-filtered strategy."
+        )
+        return
+
+    model_config = ModelConfig(decay_rate=0.001)
+    # Configure backtest, specifically setting ppi_filter_top_n
+    backtest_config = BackTestConfig(
+        min_training_weeks=10,
+        calibration_method="logistic",  # This won't be used for PPI filtering directly but remains in config
+        betting_threshold=0.02,
+        stake_size=1.0,
+        ppi_filter_top_n=4,  # Filter for top 4 matches with lowest PPI_Diff
+    )
+
+    backtester = ImprovedBacktester(backtest_config)
+
+    def ZSDPoissonModelWithConfig(**kwargs):
+        kwargs.pop("teams", None)
+        return ZSDPoissonModel(model_config)
+
+    print("\n" + "=" * 60)
+    print("Running PPI-Filtered Strategy Example...")
+    print("=" * 60)
+    try:
+        ppi_results = backtester.backtest_ppi_filtered_strategy(
+            data=matches,
+            model_class=ZSDPoissonModelWithConfig,
+            train_season="2023-2024",
+            test_season="2024-2025",
+            league="Premier-League",
+            top_n_ppi_matches=4,  # Explicitly set for this example
+        )
+
+        # Print results for the PPI-filtered strategy
+        print("\n" + "=" * 60)
+        print("PPI-FILTERED STRATEGY RESULTS")
+        print("=" * 60)
+
+        metrics = ppi_results.metrics
+        print(f"\nModel Performance (for filtered matches):")
+        print(f"  Accuracy: {metrics.get('accuracy', 0):.3f}")
+        print(f"  Log Loss: {metrics.get('log_loss', 0):.4f}")
+        print(f"  Brier Score: {metrics.get('brier_score', 0):.4f}")
+        print(
+            f"  Total Predictions: {metrics.get('n_predictions', 0)}"
+        )  # These are the *filtered* predictions
+
+        print(f"\nBetting Performance (PPI-Filtered Strategy):")
+        print(f"  Total Bets: {metrics.get('total_bets', 0)}")
+        print(f"  Total Profit: ${metrics.get('total_profit', 0):.2f}")
+        print(f"  ROI: {metrics.get('roi_percent', 0):.2f}%")
+        print(f"  Win Rate: {metrics.get('win_rate', 0):.1f}%")
+        print(f"  Average Edge: {metrics.get('avg_edge', 0):.3f}")
+        print(
+            f"  Final Bankroll: ${ppi_results.metrics.get('final_bankroll', 100):.2f}"
+        )
+
+        # Show some sample predictions (from the filtered set)
+        print(f"\nSample Predictions (PPI-Filtered):")
+        print(
+            ppi_results.predictions_df[
+                [
+                    "Date",
+                    "Home",
+                    "Away",
+                    "PPI_Diff",  # Include PPI_Diff to show filtering
+                    "Model_Prob_H",
+                    "Model_Prob_D",
+                    "Model_Prob_A",
+                    "Actual_Outcome",
+                ]
+            ]
+            .sort_values("PPI_Diff")
+            .head(10)  # Sort by PPI_Diff to confirm filtering
+        )
+
+        # Show betting results if any
+        if ppi_results.betting_results:
+            betting_df = pd.DataFrame(
+                [
+                    {
+                        "Date": bet.date,
+                        "Match": f"{bet.home_team} vs {bet.away_team}",
+                        "Bet": bet.bet_type,
+                        "Stake": bet.stake,
+                        "Odds": bet.odds,
+                        "Profit": bet.profit,
+                        "Edge": bet.edge,
+                    }
+                    for bet in ppi_results.betting_results[:10]
+                ]
+            )
+
+            print(f"\nSample Bets (PPI-Filtered):")
+            print(betting_df)
+
+        # Save results to CSV
+        backtester.save_betting_results_to_csv(
+            ppi_results, "ppi_filtered_betting_results.csv"
+        )
+        backtester.save_predictions_to_csv(ppi_results, "ppi_filtered_predictions.csv")
+
+    except Exception as e:
+        print(f"Error running PPI-filtered example: {e}")
 
 
 def simple_prediction_example():
@@ -1016,9 +1281,13 @@ if __name__ == "__main__":
     simple_prediction_example()
 
     print("\n" + "=" * 60)
-    print("Running backtest example...")
+    print("Running backtest example (Base Model)...")
     run_backtest_example()
 
     print("\n" + "=" * 60)
     print("Running calibration example...")
     run_calibration_example()
+
+    print("\n" + "=" * 60)
+    print("Running PPI-filtered strategy example...")
+    run_ppi_filtered_example()
