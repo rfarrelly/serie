@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import poisson
 from sklearn.metrics import root_mean_squared_error
 from sklearn.model_selection import TimeSeriesSplit
-from zsd_poisson_model import ZSDPoissonModel
+from zsd_poisson_model import RegularizedZSDPoissonModel
 
 
 def tune_decay_rate(df, decay_rates, n_splits=5, scoring="sse"):
@@ -34,7 +34,7 @@ def tune_decay_rate(df, decay_rates, n_splits=5, scoring="sse"):
                 continue
 
             try:
-                model = ZSDPoissonModel(teams, train_df, decay_rate=decay)
+                model = RegularizedZSDPoissonModel(teams, train_df, decay_rate=decay)
             except RuntimeError as e:
                 print(f"[decay {decay:.5f}] fold failed: {e}")
                 continue
