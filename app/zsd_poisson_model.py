@@ -1,17 +1,18 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from scipy.optimize import minimize
 from scipy.stats import norm, poisson
+from sklearn.model_selection import TimeSeriesSplit
 
 
 @dataclass
 class ModelConfig:
-    """Configuration for the soccer prediction model."""
+    """Enhanced configuration for the soccer prediction model with regularization."""
 
     decay_rate: float = 0.001
     max_goals: int = 15
@@ -19,6 +20,18 @@ class ModelConfig:
     lambda_bounds: Tuple[float, float] = (0.01, 10.0)
     param_bounds: Tuple[float, float] = (-6.0, 6.0)
     min_matches_per_team: int = 5
+
+    # Regularization parameters
+    l1_reg: float = 0.0  # Lasso regularization (sparsity)
+    l2_reg: float = 0.01  # Ridge regularization (stability) - RECOMMENDED DEFAULT
+    team_reg: float = 0.005  # Team-specific regularization (balance attack/defense)
+    shrink_to_mean: bool = True  # Shrink ratings toward league average
+
+    # Cross-validation and optimization
+    auto_tune_regularization: bool = False
+    cv_folds: int = 5
+    n_optimization_starts: int = 3
+    max_iter: int = 2000
 
 
 @dataclass
@@ -125,10 +138,12 @@ class ZIPPredictor(BasePredictor):
 
 
 class ZSDPoissonModel:
-    """Improved soccer prediction model with cleaner architecture."""
+    """Enhanced soccer prediction model with regularization and improved statistical foundation."""
 
     def __init__(self, config: Optional[ModelConfig] = None):
         self.config = config or ModelConfig()
+
+        # Model components
         self.teams = []
         self.team_index = {}
         self.attack_ratings = None
@@ -138,14 +153,185 @@ class ZSDPoissonModel:
         self.mov_model = None
         self.predictors = {}
 
+        # Training diagnostics
+        self.convergence_info = {}
+        self.regularization_path = []
+        self.cv_results = None
+
+        # Data storage
+        self.data = None
+        self.latest_date = None
+        self.n_teams = 0
+
     def fit(self, matches_df: pd.DataFrame) -> None:
-        """Fit the model to historical match data."""
+        """Fit the model to historical match data with optional parameter tuning."""
         self.data = self._prepare_data(matches_df)
         self._validate_data()
         self._initialize_teams()
+
+        # Auto-tune regularization if requested
+        if self.config.auto_tune_regularization:
+            print("Auto-tuning regularization parameters...")
+            self._tune_regularization_parameters()
+
+        print(
+            f"Fitting model with regularization: L1={self.config.l1_reg:.4f}, "
+            f"L2={self.config.l2_reg:.4f}, Team={self.config.team_reg:.4f}"
+        )
+
+        # Fit the model
         self._fit_ratings()
         self._fit_mov_model()
         self._initialize_predictors()
+
+        print(
+            f"Model fitted successfully. Convergence: {self.convergence_info.get('success', 'Unknown')}"
+        )
+
+    def _tune_regularization_parameters(self):
+        """Use time-series cross-validation to find optimal regularization parameters."""
+        param_grid = {
+            "l1_reg": [0.0, 0.001, 0.005, 0.01],
+            "l2_reg": [0.001, 0.005, 0.01, 0.05, 0.1],
+            "team_reg": [0.0, 0.001, 0.005, 0.01],
+            "decay_rate": [0.0005, 0.001, 0.002],
+        }
+
+        tscv = TimeSeriesSplit(n_splits=self.config.cv_folds)
+
+        # Generate parameter combinations (sample subset to avoid excessive computation)
+        param_combinations = self._generate_param_combinations(
+            param_grid, max_combinations=20
+        )
+
+        best_score = float("inf")
+        best_params = None
+        cv_results = []
+
+        print(f"Testing {len(param_combinations)} parameter combinations...")
+
+        for i, params in enumerate(param_combinations):
+            if i % 5 == 0:
+                print(f"Progress: {i + 1}/{len(param_combinations)}")
+
+            fold_scores = []
+            for train_idx, val_idx in tscv.split(self.data):
+                try:
+                    score = self._evaluate_params_on_fold(params, train_idx, val_idx)
+                    fold_scores.append(score)
+                except Exception as e:
+                    fold_scores.append(float("inf"))
+
+            avg_score = np.mean(fold_scores)
+            cv_results.append(
+                {
+                    "params": params.copy(),
+                    "mean_score": avg_score,
+                    "std_score": np.std(fold_scores),
+                    "scores": fold_scores.copy(),
+                }
+            )
+
+            if avg_score < best_score:
+                best_score = avg_score
+                best_params = params.copy()
+
+        # Update config with best parameters
+        for key, value in best_params.items():
+            setattr(self.config, key, value)
+
+        self.cv_results = cv_results
+        print(f"Best CV score: {best_score:.4f}")
+        print(f"Optimal parameters: {best_params}")
+
+    def _generate_param_combinations(
+        self, param_grid: Dict, max_combinations: int = 20
+    ) -> List[Dict]:
+        """Generate a reasonable subset of parameter combinations."""
+        import random
+        from itertools import product
+
+        param_names = list(param_grid.keys())
+        param_values = list(param_grid.values())
+
+        all_combinations = list(product(*param_values))
+
+        # If too many combinations, sample randomly
+        if len(all_combinations) > max_combinations:
+            all_combinations = random.sample(all_combinations, max_combinations)
+
+        return [dict(zip(param_names, combo)) for combo in all_combinations]
+
+    def _evaluate_params_on_fold(
+        self, params: Dict, train_idx: np.ndarray, val_idx: np.ndarray
+    ) -> float:
+        """Evaluate parameter set on a single fold."""
+        # Create temporary model with these parameters
+        temp_config = ModelConfig(**{**self.config.__dict__, **params})
+        temp_model = ZSDPoissonModel(temp_config)
+
+        # Fit on training fold
+        train_data = self.data.iloc[train_idx]
+        temp_model.data = temp_model._prepare_data(train_data)
+        temp_model._initialize_teams()
+        temp_model._fit_ratings()
+
+        # Evaluate on validation fold
+        val_data = self.data.iloc[val_idx]
+        predictions = []
+        actuals = []
+
+        for _, match in val_data.iterrows():
+            home_team = match["Home"]
+            away_team = match["Away"]
+
+            if (
+                home_team in temp_model.team_index
+                and away_team in temp_model.team_index
+            ):
+                try:
+                    pred_home, pred_away = temp_model._predict_goals_simple(
+                        home_team, away_team
+                    )
+                    predictions.append([pred_home, pred_away])
+                    actuals.append([match["FTHG"], match["FTAG"]])
+                except Exception:
+                    continue
+
+        if not predictions:
+            return float("inf")
+
+        # Calculate MSE
+        predictions = np.array(predictions)
+        actuals = np.array(actuals)
+        mse = np.mean((predictions - actuals) ** 2)
+
+        return mse
+
+    def _predict_goals_simple(
+        self, home_team: str, away_team: str
+    ) -> Tuple[float, float]:
+        """Simple goal prediction for cross-validation."""
+        home_idx = self.team_index[home_team]
+        away_idx = self.team_index[away_team]
+
+        # Predict expected goals using current ratings
+        home_strength = (
+            self.home_advantage
+            + self.attack_ratings[home_idx]
+            - self.defense_ratings[away_idx]
+        )
+        away_strength = (
+            self.away_adjustment
+            + self.attack_ratings[away_idx]
+            - self.defense_ratings[home_idx]
+        )
+
+        # Simple conversion to goals (more robust than full _strength_to_goals)
+        home_goals = max(0.1, 1.5 + 0.5 * home_strength)
+        away_goals = max(0.1, 1.2 + 0.5 * away_strength)
+
+        return home_goals, away_goals
 
     def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Clean and prepare the match data."""
@@ -193,32 +379,142 @@ class ZSDPoissonModel:
         self.n_teams = len(self.teams)
 
     def _fit_ratings(self) -> None:
-        """Fit attack/defense ratings using optimization."""
-        # Initialize parameters: [attack_ratings, defense_ratings, home_adv, away_adj]
-        initial_params = np.zeros(2 * self.n_teams + 2)
+        """Fit attack/defense ratings using regularized optimization with multiple starts."""
+        best_result = None
+        best_loss = float("inf")
 
-        try:
-            result = minimize(
-                self._objective_function,
-                initial_params,
-                method="L-BFGS-B",
-                options={"maxiter": 1000},
+        # Clear regularization path
+        self.regularization_path = []
+
+        for start in range(self.config.n_optimization_starts):
+            # Initialize parameters with small random values
+            initial_params = self._initialize_parameters()
+
+            try:
+                result = minimize(
+                    self._regularized_objective_function,
+                    initial_params,
+                    method="L-BFGS-B",
+                    bounds=self._get_parameter_bounds(),
+                    options={"maxiter": self.config.max_iter, "ftol": 1e-9},
+                )
+
+                if result.fun < best_loss and result.success:
+                    best_result = result
+                    best_loss = result.fun
+
+            except Exception as e:
+                print(f"Optimization start {start} failed: {str(e)}")
+                continue
+
+        if best_result is None:
+            raise RuntimeError("All optimization attempts failed")
+
+        # Unpack optimized parameters
+        self.attack_ratings = best_result.x[: self.n_teams]
+        self.defense_ratings = best_result.x[self.n_teams : 2 * self.n_teams]
+        self.home_advantage = best_result.x[-2]
+        self.away_adjustment = best_result.x[-1]
+
+        # Store convergence information
+        self.convergence_info = {
+            "success": best_result.success,
+            "iterations": best_result.nit,
+            "final_loss": best_result.fun,
+            "message": best_result.message,
+        }
+
+        if not best_result.success:
+            print(
+                f"Warning: Optimization may not have converged: {best_result.message}"
             )
 
-            if not result.success:
-                print(f"Warning: Optimization may not have converged: {result.message}")
+    def _initialize_parameters(self) -> np.ndarray:
+        """Initialize parameters with shrinkage toward sensible priors."""
+        n_params = 2 * self.n_teams + 2
 
-            # Unpack optimized parameters
-            self.attack_ratings = result.x[: self.n_teams]
-            self.defense_ratings = result.x[self.n_teams : 2 * self.n_teams]
-            self.home_advantage = result.x[-2]
-            self.away_adjustment = result.x[-1]
+        if self.config.shrink_to_mean:
+            # Initialize ratings closer to zero (league average)
+            params = np.random.normal(0, 0.05, n_params)
+        else:
+            # Standard initialization
+            params = np.random.normal(0, 0.1, n_params)
 
-        except Exception as e:
-            raise RuntimeError(f"Model fitting failed: {str(e)}")
+        # Set reasonable initial values for global parameters
+        params[-2] = 0.2  # home advantage
+        params[-1] = -0.1  # away adjustment
 
-    def _objective_function(self, params: np.ndarray) -> float:
-        """Objective function for rating optimization."""
+        return params
+
+    def _get_parameter_bounds(self) -> List[Tuple[float, float]]:
+        """Get bounds for all parameters."""
+        team_bounds = [self.config.param_bounds] * (2 * self.n_teams)
+        global_bounds = [(-2.0, 2.0), (-2.0, 2.0)]  # home/away adjustments
+        return team_bounds + global_bounds
+
+    def _regularized_objective_function(self, params: np.ndarray) -> float:
+        """Enhanced objective function with comprehensive regularization."""
+        # Base prediction loss
+        base_loss = self._base_prediction_loss(params)
+
+        # Unpack parameters for regularization
+        attack_ratings = params[: self.n_teams]
+        defense_ratings = params[self.n_teams : 2 * self.n_teams]
+        home_adv, away_adj = params[-2:]
+
+        # L1 regularization (promotes sparsity)
+        l1_penalty = self.config.l1_reg * (
+            np.sum(np.abs(attack_ratings)) + np.sum(np.abs(defense_ratings))
+        )
+
+        # L2 regularization (promotes stability)
+        l2_penalty = self.config.l2_reg * (
+            np.sum(attack_ratings**2)
+            + np.sum(defense_ratings**2)
+            + home_adv**2
+            + away_adj**2
+        )
+
+        # Team-specific regularization (balance attack/defense)
+        team_penalty = 0.0
+        if self.config.team_reg > 0:
+            for i in range(self.n_teams):
+                # Penalize extreme imbalances between attack and defense
+                imbalance = (attack_ratings[i] - defense_ratings[i]) ** 2
+                team_penalty += self.config.team_reg * imbalance
+
+        # Shrinkage toward league average
+        shrinkage_penalty = 0.0
+        if self.config.shrink_to_mean:
+            # Shrink ratings toward zero (league average)
+            mean_attack = np.mean(attack_ratings)
+            mean_defense = np.mean(defense_ratings)
+
+            shrinkage_penalty = 0.001 * (
+                np.sum((attack_ratings - mean_attack) ** 2)
+                + np.sum((defense_ratings - mean_defense) ** 2)
+            )
+
+        total_loss = (
+            base_loss + l1_penalty + l2_penalty + team_penalty + shrinkage_penalty
+        )
+
+        # Store regularization components for analysis
+        self.regularization_path.append(
+            {
+                "base_loss": base_loss,
+                "l1_penalty": l1_penalty,
+                "l2_penalty": l2_penalty,
+                "team_penalty": team_penalty,
+                "shrinkage_penalty": shrinkage_penalty,
+                "total_loss": total_loss,
+            }
+        )
+
+        return total_loss
+
+    def _base_prediction_loss(self, params: np.ndarray) -> float:
+        """Base prediction loss (weighted squared error)."""
         attack_ratings = params[: self.n_teams]
         defense_ratings = params[self.n_teams : 2 * self.n_teams]
         home_adv, away_adj = params[-2:]
@@ -380,6 +676,64 @@ class ZSDPoissonModel:
             }
         ).sort_values("Net_Rating", ascending=False)
 
+    def get_regularization_summary(self) -> Dict:
+        """Get summary of regularization effects and model diagnostics."""
+        if not self.regularization_path:
+            return {"error": "No regularization path available"}
+
+        final_reg = self.regularization_path[-1]
+
+        summary = {
+            "regularization_config": {
+                "l1_reg": self.config.l1_reg,
+                "l2_reg": self.config.l2_reg,
+                "team_reg": self.config.team_reg,
+                "shrink_to_mean": self.config.shrink_to_mean,
+            },
+            "final_loss_components": final_reg,
+            "regularization_ratio": (
+                final_reg.get("l1_penalty", 0)
+                + final_reg.get("l2_penalty", 0)
+                + final_reg.get("team_penalty", 0)
+            )
+            / max(final_reg.get("base_loss", 1), 1e-10),
+            "convergence_info": self.convergence_info,
+            "model_complexity": {
+                "n_teams": self.n_teams,
+                "n_parameters": 2 * self.n_teams + 2,
+                "n_matches": len(self.data) if self.data is not None else 0,
+            },
+        }
+
+        # Add cross-validation results if available
+        if self.cv_results is not None:
+            best_cv = min(self.cv_results, key=lambda x: x["mean_score"])
+            summary["cross_validation"] = {
+                "best_score": best_cv["mean_score"],
+                "best_params": best_cv["params"],
+                "n_param_combinations_tested": len(self.cv_results),
+            }
+
+        # Add rating statistics
+        if self.attack_ratings is not None:
+            summary["rating_statistics"] = {
+                "attack_rating_range": (
+                    float(np.min(self.attack_ratings)),
+                    float(np.max(self.attack_ratings)),
+                ),
+                "defense_rating_range": (
+                    float(np.min(self.defense_ratings)),
+                    float(np.max(self.defense_ratings)),
+                ),
+                "rating_std": float(
+                    np.std(np.concatenate([self.attack_ratings, self.defense_ratings]))
+                ),
+                "home_advantage": float(self.home_advantage),
+                "away_adjustment": float(self.away_adjustment),
+            }
+
+        return summary
+
     @staticmethod
     def _sigmoid(x: np.ndarray) -> np.ndarray:
         """Stable sigmoid function."""
@@ -390,15 +744,28 @@ class ZSDPoissonModel:
 if __name__ == "__main__":
     # Create sample data for testing
     np.random.seed(42)
-    teams = ["Team_A", "Team_B", "Team_C", "Team_D"]
-    n_matches = 100
+    teams = [f"Team_{i}" for i in range(8)]
+    n_matches = 200
 
     sample_data = []
     for i in range(n_matches):
         home = np.random.choice(teams)
         away = np.random.choice([t for t in teams if t != home])
-        home_goals = np.random.poisson(1.5)
-        away_goals = np.random.poisson(1.2)
+
+        # Simulate realistic team strengths
+        team_strengths = {
+            "Team_0": 1.8,
+            "Team_1": 1.6,
+            "Team_2": 1.4,
+            "Team_3": 1.2,
+            "Team_4": 1.0,
+            "Team_5": 0.9,
+            "Team_6": 0.8,
+            "Team_7": 0.7,
+        }
+
+        home_goals = np.random.poisson(team_strengths[home] * 1.2)  # Add home advantage
+        away_goals = np.random.poisson(team_strengths[away])
 
         sample_data.append(
             {
@@ -412,15 +779,22 @@ if __name__ == "__main__":
 
     df = pd.DataFrame(sample_data)
 
-    # Fit model
-    config = ModelConfig(decay_rate=0.001)
+    # Test the model
+    config = ModelConfig(
+        decay_rate=0.001, l2_reg=0.01, team_reg=0.005, auto_tune_regularization=False
+    )
+
     model = ZSDPoissonModel(config)
     model.fit(df)
 
-    # Make prediction
-    prediction = model.predict_match("Team_A", "Team_B", method="zip")
+    # Make a prediction
+    prediction = model.predict_match("Team_0", "Team_7")
     print(f"Prediction: {prediction}")
 
     # Show team ratings
-    ratings = model.get_team_ratings()
-    print(f"\nTeam Ratings:\n{ratings}")
+    print("\nTeam Ratings:")
+    print(model.get_team_ratings())
+
+    # Show regularization summary
+    print("\nRegularization Summary:")
+    print(model.get_regularization_summary())

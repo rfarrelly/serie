@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from analysis_tools import benchmark_model, tune_decay_rate
 from utils.datetime_helpers import format_date
-from zsd_poisson_model import ZSDPoissonModel
+from zsd_poisson_model import RegularizedZSDPoissonModel
 
 
 def decay_rate_tuning():
@@ -29,7 +29,7 @@ def run_benchmarking():
         "DATA/FBREF/Premier-League/Premier-League_2022-2023.csv",
     ]
     matches = pd.concat([pd.read_csv(file, dtype={"Wk": int}) for file in files])
-    results = benchmark_model(df=matches, model_class=ZSDPoissonModel)
+    results = benchmark_model(df=matches, model_class=RegularizedZSDPoissonModel)
     print(results)
 
 
@@ -39,7 +39,7 @@ def sanity_check():
     matches = format_date(matches)
     played_matches = matches[:206].copy()
     played_matches = played_matches.sort_values("Date")
-    model = ZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
+    model = RegularizedZSDPoissonModel(played_matches=played_matches, decay_rate=0.001)
     preds = model.predict_match(
         home_team="Bournemouth", away_team="Everton", max_goals=15
     )

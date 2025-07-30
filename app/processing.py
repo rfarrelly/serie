@@ -4,7 +4,7 @@ from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
 from stats import compute_points_performance_index, compute_ppg
 from utils.datetime_helpers import filter_date_range
-from zsd_poisson_model import ZSDPoissonModel
+from zsd_poisson_model import RegularizedZSDPoissonModel
 
 
 class LeagueProcessor:
@@ -91,7 +91,7 @@ class LeagueProcessor:
     def get_zsd_poisson(self):
         fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
 
-        model = ZSDPoissonModel(played_matches=self.played_matches_df)
+        model = RegularizedZSDPoissonModel(played_matches=self.played_matches_df)
 
         results = []
 

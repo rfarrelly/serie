@@ -4,6 +4,7 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from scipy.stats import poisson
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.preprocessing import StandardScaler
@@ -11,6 +12,8 @@ from utils.odds_helpers import get_no_vig_odds_multiway
 from zsd_poisson_model import ModelConfig, ZSDPoissonModel
 
 warnings.filterwarnings("ignore")
+
+# L1=0.0100, L2=0.1000, Team=0.0100
 
 
 @dataclass
@@ -22,7 +25,7 @@ class BackTestConfig:
     betting_threshold: float = 0.02
     stake_size: float = 1.0
     max_stake_fraction: float = 0.05  # Max fraction of bankroll per bet
-    ppi_filter_top_n: int = 4  # New: Number of top matches to filter by PPI_Diff
+    ppi_filter_top_n: int = 4  # Number of top matches to filter by PPI_Diff
 
 
 @dataclass
@@ -50,6 +53,19 @@ class BackTestResults:
     betting_results: List[BettingResult]
     metrics: Dict[str, float]
     weekly_performance: pd.DataFrame
+
+
+@dataclass
+class MatchPrediction:
+    """Simple prediction result structure to match expected interface."""
+
+    prob_home_win: float
+    prob_draw: float
+    prob_away_win: float
+    lambda_home: float
+    lambda_away: float
+    mov_prediction: float
+    mov_std_error: float
 
 
 class ModelEvaluator:
@@ -130,8 +146,6 @@ class BettingSimulator:
         max_edge = np.max(edges)
 
         if max_edge < self.config.betting_threshold:
-            # Debugging print statement
-            # print(f"No bet for {match_info['home']} vs {match_info['away']}. Max Edge ({max_edge:.4f}) < Threshold ({self.config.betting_threshold:.4f})")
             return None
 
         # Place bet on outcome with highest edge
@@ -167,8 +181,6 @@ class BettingSimulator:
             fair_prob=fair_probs[bet_idx],
             edge=edge,
         )
-        # Debugging print statement for placed bets
-        # print(f"BET PLACED: {match_info['home']} vs {match_info['away']}, Bet: {bet_types[bet_idx]}, Edge: {edge:.4f}, Stake: {stake:.2f}, Profit: {profit:.2f}, Bankroll: {self.bankroll:.2f}")
 
         self.betting_history.append(result)
         return result
@@ -262,7 +274,6 @@ class ImprovedBacktester:
 
         all_predictions = []
         weekly_metrics = []
-        teams = sorted(set(train_data["Home"]).union(test_data["Home"]))
 
         print(f"Backtesting {league}: {train_season} -> {test_season}")
         print(f"Training matches: {len(train_data)}, Test matches: {len(test_data)}")
@@ -281,17 +292,18 @@ class ImprovedBacktester:
                     [train_data, past_test_data], ignore_index=True
                 )
 
-                # Fit model
+                # Fit model - Updated to work with new ZSDPoissonModel
                 model_params = model_params or {}
-                # Remove teams parameter if it exists since original ZSDPoissonModel doesn't use it
-                if "teams" in model_params:
-                    del model_params["teams"]
 
-                # Corrected: Instantiate model and then fit
-                model = model_class(
-                    **model_params
-                )  # Pass only config or other valid params
-                model.fit(combined_training)  # Fit the model with the training data
+                # Create model instance
+                if isinstance(model_class, type):
+                    # If it's a class, instantiate it
+                    model = model_class(model_params.get("config", ModelConfig()))
+                else:
+                    # If it's a factory function, call it
+                    model = model_class(**model_params)
+
+                model.fit(combined_training)
 
                 # Get current week matches
                 week_matches = test_data[test_data["Wk"] == week].copy()
@@ -304,7 +316,7 @@ class ImprovedBacktester:
                     if prediction_result:
                         week_predictions.append(prediction_result)
 
-                        # Evaluate betting opportunity - Pass actual_outcome
+                        # Evaluate betting opportunity
                         betting_result = self._evaluate_betting_opportunity(
                             prediction_result, prediction_result["Actual_Outcome"]
                         )
@@ -349,7 +361,7 @@ class ImprovedBacktester:
         test_season: str,
         league: str,
         model_params: Optional[Dict] = None,
-        top_n_ppi_matches: Optional[int] = None,  # Allow override from config
+        top_n_ppi_matches: Optional[int] = None,
     ) -> BackTestResults:
         """
         Runs a backtest strategy that filters matches based on PPI_Diff being close to zero,
@@ -403,12 +415,14 @@ class ImprovedBacktester:
                     [train_data, past_test_data], ignore_index=True
                 )
 
-                # Fit model
+                # Fit model - Updated to work with new ZSDPoissonModel
                 model_params = model_params or {}
-                if "teams" in model_params:
-                    del model_params["teams"]
 
-                model = model_class(**model_params)
+                if isinstance(model_class, type):
+                    model = model_class(model_params.get("config", ModelConfig()))
+                else:
+                    model = model_class(**model_params)
+
                 model.fit(combined_training)
 
                 # Get current week matches
@@ -430,7 +444,6 @@ class ImprovedBacktester:
                 week_predictions_df = pd.DataFrame(current_week_all_predictions)
 
                 # Filter by PPI_Diff: take top N matches with lowest absolute PPI_Diff
-                # Ensure 'PPI_Diff' column exists and is not NaN
                 if (
                     "PPI_Diff" in week_predictions_df.columns
                     and not week_predictions_df["PPI_Diff"].isnull().all()
@@ -445,8 +458,6 @@ class ImprovedBacktester:
                     print(
                         f"Warning: 'PPI_Diff' not found or all NaN for week {week}. Skipping PPI filter."
                     )
-                    # If PPI_Diff is not available, proceed with all matches (or handle as per policy)
-                    # For this case, let's just use all available predictions if PPI_Diff is missing.
                     filtered_matches = week_predictions_df.copy()
 
                 week_betting_results = []
@@ -457,11 +468,9 @@ class ImprovedBacktester:
                     if betting_result:
                         week_betting_results.extend(betting_result)
 
-                all_predictions.extend(
-                    filtered_matches.to_dict(orient="records")
-                )  # Add filtered predictions to overall list
+                all_predictions.extend(filtered_matches.to_dict(orient="records"))
 
-                # Calculate weekly metrics for the FILTERED matches that were considered for betting
+                # Calculate weekly metrics for the FILTERED matches
                 if not filtered_matches.empty:
                     week_metrics = self._calculate_weekly_metrics(
                         filtered_matches, week
@@ -496,8 +505,8 @@ class ImprovedBacktester:
             home_team = match_row["Home"]
             away_team = match_row["Away"]
 
-            # Get model prediction
-            prediction = model.predict_match(home_team, away_team, method="zip")
+            # Get model prediction - Updated to work with new model structure
+            prediction = self._get_match_prediction(model, home_team, away_team)
 
             # Calculate fair probabilities from odds
             odds = [
@@ -517,7 +526,7 @@ class ImprovedBacktester:
                 if col in match_row.index:
                     ppi_features[col] = match_row[col]
                 else:
-                    ppi_features[col] = np.nan  # Ensure the column exists even if NaN
+                    ppi_features[col] = np.nan
 
             return {
                 "Date": match_row["Date"],
@@ -541,7 +550,7 @@ class ImprovedBacktester:
                 "PSCH": odds[0],
                 "PSCD": odds[1],
                 "PSCA": odds[2],
-                **ppi_features,  # Add PPI features to the prediction result
+                **ppi_features,
             }
 
         except Exception as e:
@@ -550,19 +559,117 @@ class ImprovedBacktester:
             )
             return None
 
+    def _get_match_prediction(
+        self, model, home_team: str, away_team: str
+    ) -> MatchPrediction:
+        """Get match prediction from model, handling the new model structure."""
+        try:
+            # Check if teams exist in model
+            if home_team not in model.team_index or away_team not in model.team_index:
+                # Return default prediction for unknown teams
+                return MatchPrediction(
+                    prob_home_win=0.33,
+                    prob_draw=0.33,
+                    prob_away_win=0.34,
+                    lambda_home=1.5,
+                    lambda_away=1.2,
+                    mov_prediction=0.0,
+                    mov_std_error=1.0,
+                )
+
+            # Get team indices
+            home_idx = model.team_index[home_team]
+            away_idx = model.team_index[away_team]
+
+            # Calculate expected goals using model parameters
+            home_strength = (
+                model.home_advantage
+                + model.attack_ratings[home_idx]
+                - model.defense_ratings[away_idx]
+            )
+
+            away_strength = (
+                model.away_adjustment
+                + model.attack_ratings[away_idx]
+                - model.defense_ratings[home_idx]
+            )
+
+            # Convert strength to expected goals (simplified approach)
+            # You may need to adjust this based on your model's _strength_to_goals method
+            lambda_home = max(0.1, 1.5 + 0.5 * home_strength)
+            lambda_away = max(0.1, 1.2 + 0.5 * away_strength)
+
+            # Calculate match outcome probabilities using Poisson distribution
+            max_goals = model.config.max_goals
+            prob_matrix = np.zeros((max_goals + 1, max_goals + 1))
+
+            for h_goals in range(max_goals + 1):
+                for a_goals in range(max_goals + 1):
+                    prob_matrix[h_goals, a_goals] = poisson.pmf(
+                        h_goals, lambda_home
+                    ) * poisson.pmf(a_goals, lambda_away)
+
+            # Calculate outcome probabilities
+            prob_home_win = np.sum(
+                [
+                    prob_matrix[h, a]
+                    for h in range(max_goals + 1)
+                    for a in range(max_goals + 1)
+                    if h > a
+                ]
+            )
+            prob_draw = np.sum([prob_matrix[h, h] for h in range(max_goals + 1)])
+            prob_away_win = np.sum(
+                [
+                    prob_matrix[h, a]
+                    for h in range(max_goals + 1)
+                    for a in range(max_goals + 1)
+                    if h < a
+                ]
+            )
+
+            # Normalize probabilities
+            total_prob = prob_home_win + prob_draw + prob_away_win
+            if total_prob > 0:
+                prob_home_win /= total_prob
+                prob_draw /= total_prob
+                prob_away_win /= total_prob
+
+            # Calculate margin of victory prediction and standard error
+            mov_prediction = lambda_home - lambda_away
+            mov_std_error = np.sqrt(lambda_home + lambda_away)
+
+            return MatchPrediction(
+                prob_home_win=prob_home_win,
+                prob_draw=prob_draw,
+                prob_away_win=prob_away_win,
+                lambda_home=lambda_home,
+                lambda_away=lambda_away,
+                mov_prediction=mov_prediction,
+                mov_std_error=mov_std_error,
+            )
+
+        except Exception as e:
+            print(f"Error in _get_match_prediction: {e}")
+            # Return default prediction
+            return MatchPrediction(
+                prob_home_win=0.33,
+                prob_draw=0.33,
+                prob_away_win=0.34,
+                lambda_home=1.5,
+                lambda_away=1.2,
+                mov_prediction=0.0,
+                mov_std_error=1.0,
+            )
+
     def _calculate_fair_probabilities(self, odds: List[float]) -> List[float]:
-        """Calculate fair (no-vig) probabilities from bookmaker odds using get_no_vig_odds_multiway."""
+        """Calculate fair (no-vig) probabilities from bookmaker odds."""
         try:
             if any(np.isnan(odds)) or any(o <= 1.0 for o in odds):
                 return [np.nan, np.nan, np.nan]
 
-            # Use the provided get_no_vig_odds_multiway function
             fair_odds_tuple = get_no_vig_odds_multiway(odds)
-
-            # Convert tuple to list to maintain consistency with previous return type
-            # The fair probabilities are simply 1/fair_odds
             fair_probs = [1 / o for o in fair_odds_tuple]
-
             return fair_probs
 
         except Exception as e:
@@ -609,25 +716,14 @@ class ImprovedBacktester:
             or np.any(np.isnan(fair_probs))
             or np.any(np.isnan(odds))
         ):
-            # print(f"Skipping bet for {prediction['Home']} vs {prediction['Away']} due to NaN probabilities/odds.")
             return []
-
-        # Debugging print for a match being evaluated
-        # print(f"\nEvaluating bet for {prediction['Home']} vs {prediction['Away']} on {prediction['Date']}")
-        # print(f"  Model Probs: {model_probs}")
-        # print(f"  Fair Probs:  {fair_probs}")
-        # print(f"  Odds:        {odds}")
 
         # Calculate edges
         edges = model_probs - fair_probs
         max_edge = np.max(edges)
 
-        # print(f"  Edges:       {edges}")
-        # print(f"  Max Edge: {max_edge:.4f}, Threshold: {self.config.betting_threshold:.4f}")
-
         if max_edge < self.config.betting_threshold:
-            # print(f"  No bet placed (Max Edge {max_edge:.4f} < Threshold {self.config.betting_threshold:.4f})")
-            return []  # Return empty list if no bet is placed, to be consistent with type hinting
+            return []
 
         # Place bet on outcome with highest edge
         bet_idx = np.argmax(edges)
@@ -665,9 +761,7 @@ class ImprovedBacktester:
         )
 
         self.betting_simulator.betting_history.append(result)
-        return [
-            result
-        ]  # Return a list containing the result, consistent with type hinting
+        return [result]
 
     def _calculate_weekly_metrics(self, week_df: pd.DataFrame, week: int) -> Dict:
         """Calculate metrics for a single week."""
@@ -947,7 +1041,7 @@ class ImprovedBacktester:
         print(f"Predictions saved to {filename}")
 
 
-# Example usage with your updated ZSDPoissonModel (now using the improved code)
+# Updated example usage functions to work with the new model structure
 def run_backtest_example():
     """Example of how to run the improved backtesting with your data."""
 
@@ -955,7 +1049,15 @@ def run_backtest_example():
     matches = pd.read_csv("historical_ppi_and_odds.csv", dtype={"Wk": int})
 
     # Configure the model
-    model_config = ModelConfig(decay_rate=0.001, max_goals=15, min_matches_per_team=5)
+    model_config = ModelConfig(
+        decay_rate=0.001,
+        max_goals=15,
+        min_matches_per_team=5,
+        l1_reg=0.0,
+        l2_reg=0.01,
+        team_reg=0.005,
+        auto_tune_regularization=False,  # Set to True if you want auto-tuning
+    )
 
     # Configure the backtesting
     backtest_config = BackTestConfig(
@@ -963,17 +1065,16 @@ def run_backtest_example():
         calibration_method="logistic",
         betting_threshold=0.025,
         stake_size=1.0,
-        ppi_filter_top_n=4,  # Set the default for PPI filtering
+        ppi_filter_top_n=4,
     )
 
     # Create backtester
     backtester = ImprovedBacktester(backtest_config)
 
-    # Create a model class that uses your config
+    # Updated model factory function
     def ZSDPoissonModelWithConfig(**kwargs):
-        # Remove teams parameter if passed (not needed for updated model)
-        kwargs.pop("teams", None)
-        return ZSDPoissonModel(model_config)
+        config = kwargs.get("config", model_config)
+        return ZSDPoissonModel(config)
 
     # Run base backtest
     print("\n" + "=" * 60)
@@ -986,6 +1087,7 @@ def run_backtest_example():
             train_season="2023-2024",
             test_season="2024-2025",
             league="Premier-League",
+            model_params={"config": model_config},
         )
 
         # Print results
@@ -1011,20 +1113,21 @@ def run_backtest_example():
         )
 
         # Show some sample predictions
-        print(f"\nSample Predictions (Base Model):")
-        print(
-            base_results.predictions_df[
-                [
-                    "Date",
-                    "Home",
-                    "Away",
-                    "Model_Prob_H",
-                    "Model_Prob_D",
-                    "Model_Prob_A",
-                    "Actual_Outcome",
-                ]
-            ].head(10)
-        )
+        if not base_results.predictions_df.empty:
+            print(f"\nSample Predictions (Base Model):")
+            print(
+                base_results.predictions_df[
+                    [
+                        "Date",
+                        "Home",
+                        "Away",
+                        "Model_Prob_H",
+                        "Model_Prob_D",
+                        "Model_Prob_A",
+                        "Actual_Outcome",
+                    ]
+                ].head(10)
+            )
 
         # Show betting results if any
         if base_results.betting_results:
@@ -1052,6 +1155,9 @@ def run_backtest_example():
 
     except Exception as e:
         print(f"Error running base backtest: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 def run_calibration_example():
@@ -1059,7 +1165,7 @@ def run_calibration_example():
 
     matches = pd.read_csv("historical_ppi_and_odds.csv", dtype={"Wk": int})
 
-    # Check if PPI columns exist in the *original* data
+    # Check if PPI columns exist in the original data
     ppi_cols = ["PPI_A", "PPI_Diff", "hPPI", "aPPI"]
     available_ppi_cols = [col for col in ppi_cols if col in matches.columns]
 
@@ -1067,7 +1173,14 @@ def run_calibration_example():
         print("No PPI columns found for calibration in the original data.")
         return
 
-    model_config = ModelConfig(decay_rate=0.001)
+    model_config = ModelConfig(
+        decay_rate=0.001,
+        l1_reg=0.0,
+        l2_reg=0.01,
+        team_reg=0.005,
+        auto_tune_regularization=False,
+    )
+
     backtest_config = BackTestConfig(
         min_training_weeks=10, calibration_method="logistic", betting_threshold=0.02
     )
@@ -1075,15 +1188,14 @@ def run_calibration_example():
     backtester = ImprovedBacktester(backtest_config)
 
     def ZSDPoissonModelWithConfig(**kwargs):
-        kwargs.pop("teams", None)
-        return ZSDPoissonModel(model_config)
+        config = kwargs.get("config", model_config)
+        return ZSDPoissonModel(config)
 
     print("\n" + "=" * 60)
     print("Running Calibration Example...")
     print("=" * 60)
     try:
         # Run backtest with calibration
-        # Pass all available PPI columns to ensure they are carried through
         results_calibrated = backtester.backtest_with_calibration(
             data=matches,
             model_class=ZSDPoissonModelWithConfig,
@@ -1108,6 +1220,9 @@ def run_calibration_example():
 
     except Exception as e:
         print(f"Error running calibration example: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 def run_ppi_filtered_example():
@@ -1122,21 +1237,27 @@ def run_ppi_filtered_example():
         )
         return
 
-    model_config = ModelConfig(decay_rate=0.001)
-    # Configure backtest, specifically setting ppi_filter_top_n
+    model_config = ModelConfig(
+        decay_rate=0.001,
+        l1_reg=0.0,
+        l2_reg=0.01,
+        team_reg=0.005,
+        auto_tune_regularization=False,
+    )
+
     backtest_config = BackTestConfig(
         min_training_weeks=10,
-        calibration_method="logistic",  # This won't be used for PPI filtering directly but remains in config
+        calibration_method="logistic",
         betting_threshold=0.02,
         stake_size=1.0,
-        ppi_filter_top_n=4,  # Filter for top 4 matches with lowest PPI_Diff
+        ppi_filter_top_n=4,
     )
 
     backtester = ImprovedBacktester(backtest_config)
 
     def ZSDPoissonModelWithConfig(**kwargs):
-        kwargs.pop("teams", None)
-        return ZSDPoissonModel(model_config)
+        config = kwargs.get("config", model_config)
+        return ZSDPoissonModel(config)
 
     print("\n" + "=" * 60)
     print("Running PPI-Filtered Strategy Example...")
@@ -1148,7 +1269,8 @@ def run_ppi_filtered_example():
             train_season="2023-2024",
             test_season="2024-2025",
             league="Premier-League",
-            top_n_ppi_matches=4,  # Explicitly set for this example
+            model_params={"config": model_config},
+            top_n_ppi_matches=4,
         )
 
         # Print results for the PPI-filtered strategy
@@ -1161,9 +1283,7 @@ def run_ppi_filtered_example():
         print(f"  Accuracy: {metrics.get('accuracy', 0):.3f}")
         print(f"  Log Loss: {metrics.get('log_loss', 0):.4f}")
         print(f"  Brier Score: {metrics.get('brier_score', 0):.4f}")
-        print(
-            f"  Total Predictions: {metrics.get('n_predictions', 0)}"
-        )  # These are the *filtered* predictions
+        print(f"  Total Predictions: {metrics.get('n_predictions', 0)}")
 
         print(f"\nBetting Performance (PPI-Filtered Strategy):")
         print(f"  Total Bets: {metrics.get('total_bets', 0)}")
@@ -1176,23 +1296,25 @@ def run_ppi_filtered_example():
         )
 
         # Show some sample predictions (from the filtered set)
-        print(f"\nSample Predictions (PPI-Filtered):")
-        print(
-            ppi_results.predictions_df[
-                [
-                    "Date",
-                    "Home",
-                    "Away",
-                    "PPI_Diff",  # Include PPI_Diff to show filtering
-                    "Model_Prob_H",
-                    "Model_Prob_D",
-                    "Model_Prob_A",
-                    "Actual_Outcome",
-                ]
+        if not ppi_results.predictions_df.empty:
+            print(f"\nSample Predictions (PPI-Filtered):")
+            display_cols = [
+                "Date",
+                "Home",
+                "Away",
+                "Model_Prob_H",
+                "Model_Prob_D",
+                "Model_Prob_A",
+                "Actual_Outcome",
             ]
-            .sort_values("PPI_Diff")
-            .head(10)  # Sort by PPI_Diff to confirm filtering
-        )
+            if "PPI_Diff" in ppi_results.predictions_df.columns:
+                display_cols.insert(3, "PPI_Diff")
+
+            print(
+                ppi_results.predictions_df[display_cols]
+                .sort_values("PPI_Diff" if "PPI_Diff" in display_cols else "Date")
+                .head(10)
+            )
 
         # Show betting results if any
         if ppi_results.betting_results:
@@ -1222,6 +1344,9 @@ def run_ppi_filtered_example():
 
     except Exception as e:
         print(f"Error running PPI-filtered example: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 def simple_prediction_example():
@@ -1240,17 +1365,25 @@ def simple_prediction_example():
         return
 
     # Configure and fit model
-    config = ModelConfig(decay_rate=0.001)
+    config = ModelConfig(
+        decay_rate=0.001,
+        l1_reg=0.0,
+        l2_reg=0.01,
+        team_reg=0.005,
+        auto_tune_regularization=False,
+    )
     model = ZSDPoissonModel(config)
 
     try:
         model.fit(train_data)
 
         # Make a prediction
-        home_team = train_data["Home"].iloc[0]  # Use first team as example
-        away_team = train_data["Away"].iloc[0]  # Use first opponent as example
+        home_team = train_data["Home"].iloc[0]
+        away_team = train_data["Away"].iloc[0]
 
-        prediction = model.predict_match(home_team, away_team, method="zip")
+        # Use the backtester's prediction method for consistency
+        backtester = ImprovedBacktester()
+        prediction = backtester._get_match_prediction(model, home_team, away_team)
 
         print(f"\nPrediction for {home_team} vs {away_team}:")
         print(
@@ -1265,14 +1398,32 @@ def simple_prediction_example():
         )
 
         # Show team ratings
-        ratings = model.get_team_ratings()
-        print(f"\nTop 5 Teams by Net Rating:")
-        print(ratings.head())
+        if hasattr(model, "attack_ratings") and model.attack_ratings is not None:
+            ratings_data = []
+            for i, team in enumerate(model.teams):
+                ratings_data.append(
+                    {
+                        "Team": team,
+                        "Attack": model.attack_ratings[i],
+                        "Defense": model.defense_ratings[i],
+                        "Net_Rating": model.attack_ratings[i]
+                        - model.defense_ratings[i],
+                    }
+                )
+
+            ratings_df = pd.DataFrame(ratings_data).sort_values(
+                "Net_Rating", ascending=False
+            )
+            print(f"\nTop 5 Teams by Net Rating:")
+            print(ratings_df.head())
 
         return model, prediction
 
     except Exception as e:
         print(f"Error in prediction example: {e}")
+        import traceback
+
+        traceback.print_exc()
         return None, None
 
 
