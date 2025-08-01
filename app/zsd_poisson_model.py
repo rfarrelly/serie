@@ -174,19 +174,19 @@ class ZSDPoissonModel:
             print("Auto-tuning regularization parameters...")
             self._tune_regularization_parameters()
 
-        # print(
-        #     f"Fitting model with regularization: L1={self.config.l1_reg:.4f}, "
-        #     f"L2={self.config.l2_reg:.4f}, Team={self.config.team_reg:.4f}"
-        # )
+        print(
+            f"Fitting model with regularization: L1={self.config.l1_reg:.4f}, "
+            f"L2={self.config.l2_reg:.4f}, Team={self.config.team_reg:.4f}"
+        )
 
         # Fit the model
         self._fit_ratings()
         self._fit_mov_model()
         self._initialize_predictors()
 
-        # print(
-        #     f"Model fitted successfully. Convergence: {self.convergence_info.get('success', 'Unknown')}"
-        # )
+        print(
+            f"Model fitted successfully. Convergence: {self.convergence_info.get('success', 'Unknown')}"
+        )
 
     def _tune_regularization_parameters(self):
         """Use time-series cross-validation to find optimal regularization parameters."""

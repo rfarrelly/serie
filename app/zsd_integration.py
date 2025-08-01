@@ -68,16 +68,6 @@ class ZSDModelManager:
         # (Optional) Random sample if you want to reduce size
         param_combinations = random.sample(all_param_combinations, k=20)
 
-        # Parameter grid for optimization
-        # param_combinations = [
-        #     {"l1_reg": 0.0, "l2_reg": 0.005, "team_reg": 0.001, "decay_rate": 0.0005},
-        #     {"l1_reg": 0.0, "l2_reg": 0.01, "team_reg": 0.005, "decay_rate": 0.001},
-        #     {"l1_reg": 0.0, "l2_reg": 0.02, "team_reg": 0.01, "decay_rate": 0.001},
-        #     {"l1_reg": 0.001, "l2_reg": 0.01, "team_reg": 0.005, "decay_rate": 0.001},
-        #     {"l1_reg": 0.0, "l2_reg": 0.05, "team_reg": 0.01, "decay_rate": 0.002},
-        #     {"l1_reg": 0.0, "l2_reg": 0.1, "team_reg": 0.01, "decay_rate": 0.001},
-        # ]
-
         best_config = None
         best_score = float("inf")
         best_results = None
@@ -90,9 +80,7 @@ class ZSDModelManager:
         backtester = ImprovedBacktester(backtest_config)
 
         for i, params in enumerate(param_combinations):
-            # print(
-            #     f"  Testing combination {i+1}/{len(param_combinations)}: {params}"
-            # )
+            print(f"  Testing combination {i + 1}/{len(param_combinations)}: {params}")
 
             try:
                 # Create model config
@@ -122,9 +110,9 @@ class ZSDModelManager:
                 # Combined score (lower is better)
                 score = log_loss - (roi / 100.0) + bet_penalty
 
-                # print(
-                #     f"    Score: {score:.4f} (LogLoss: {log_loss:.4f}, ROI: {roi:.1f}%, Bets: {n_bets})"
-                # )
+                print(
+                    f"    Score: {score:.4f} (LogLoss: {log_loss:.4f}, ROI: {roi:.1f}%, Bets: {n_bets})"
+                )
 
                 if score < best_score:
                     best_score = score

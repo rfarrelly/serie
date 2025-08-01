@@ -347,9 +347,9 @@ class ImprovedBacktester:
                     week_metrics = self._calculate_weekly_metrics(week_df, week)
                     weekly_metrics.append(week_metrics)
 
-                # print(
-                #     f"Week {week}: {len(week_predictions)} predictions, {len(week_betting_results)} bets"
-                # )
+                print(
+                    f"Week {week}: {len(week_predictions)} predictions, {len(week_betting_results)} bets"
+                )
 
             except Exception as e:
                 print(f"Error in week {week}: {str(e)}")
