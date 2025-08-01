@@ -267,6 +267,22 @@ class ImprovedBacktester:
             .sort_values(["Wk", "Date"])
         )
 
+        # Remove promoted and relegated teams
+        teams_train_data = set(pd.concat([train_data["Home"], train_data["Away"]]))
+
+        teams_test_data = set(pd.concat([test_data["Home"], test_data["Away"]]))
+
+        common_teams = teams_train_data & teams_test_data
+
+        train_data = train_data[
+            train_data["Home"].isin(common_teams)
+            & train_data["Away"].isin(common_teams)
+        ]
+
+        test_data = test_data[
+            test_data["Home"].isin(common_teams) & test_data["Away"].isin(common_teams)
+        ]
+
         if len(train_data) == 0 or len(test_data) == 0:
             raise ValueError(
                 f"Insufficient data for {league} {train_season}/{test_season}"
@@ -1084,9 +1100,9 @@ def run_backtest_example():
         base_results = backtester.backtest_cross_season(
             data=matches,
             model_class=ZSDPoissonModelWithConfig,
-            train_season="2023-2024",
-            test_season="2024-2025",
-            league="Premier-League",
+            train_season="2022-2023",
+            test_season="2023-2024",
+            league="2-Bundesliga",
             model_params={"config": model_config},
         )
 
@@ -1428,17 +1444,17 @@ def simple_prediction_example():
 
 
 if __name__ == "__main__":
-    print("Running simple prediction example...")
-    simple_prediction_example()
+    # print("Running simple prediction example...")
+    # simple_prediction_example()
 
     print("\n" + "=" * 60)
     print("Running backtest example (Base Model)...")
     run_backtest_example()
 
-    print("\n" + "=" * 60)
-    print("Running calibration example...")
-    run_calibration_example()
+    # print("\n" + "=" * 60)
+    # print("Running calibration example...")
+    # run_calibration_example()
 
-    print("\n" + "=" * 60)
-    print("Running PPI-filtered strategy example...")
-    run_ppi_filtered_example()
+    # print("\n" + "=" * 60)
+    # print("Running PPI-filtered strategy example...")
+    # run_ppi_filtered_example()
