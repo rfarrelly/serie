@@ -88,6 +88,4 @@ def week_continuity(df: pd.DataFrame):
     df = df.drop("Wk", axis=1).rename({"Wk_adj": "Wk"}, axis=1)
     cols = ["Wk"] + [col for col in df.columns if col != "Wk"]
     df = df[cols]
-    # if "Ekstraklasa" in df["League"].values:
-    #     breakpoint()
     return df

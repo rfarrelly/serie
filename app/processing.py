@@ -4,7 +4,8 @@ from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
 from stats import compute_points_performance_index, compute_ppg
 from utils.datetime_helpers import filter_date_range
-from zsd_poisson_model import RegularizedZSDPoissonModel
+
+# from zsd_poisson_model import RegularizedZSDPoissonModel
 
 
 class LeagueProcessor:
@@ -88,39 +89,39 @@ class LeagueProcessor:
         candidates_df = pd.DataFrame(candidates)
         return candidates_df.to_dict(orient="records")
 
-    def get_zsd_poisson(self):
-        fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
+    # def get_zsd_poisson(self):
+    #     fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
 
-        model = RegularizedZSDPoissonModel(played_matches=self.played_matches_df)
+    #     model = RegularizedZSDPoissonModel(played_matches=self.played_matches_df)
 
-        results = []
+    #     results = []
 
-        for fixture in fixtures.itertuples(index=False):
-            week, date, home_team, away_team = (
-                fixture.Wk,
-                fixture.Date,
-                fixture.Home,
-                fixture.Away,
-            )
+    #     for fixture in fixtures.itertuples(index=False):
+    #         week, date, home_team, away_team = (
+    #             fixture.Wk,
+    #             fixture.Date,
+    #             fixture.Home,
+    #             fixture.Away,
+    #         )
 
-            result = {}
-            # Add fixture metadata
-            result["Wk"] = week
-            result["Date"] = date
-            result["Home"] = home_team
-            result["Away"] = away_team
+    #         result = {}
+    #         # Add fixture metadata
+    #         result["Wk"] = week
+    #         result["Date"] = date
+    #         result["Home"] = home_team
+    #         result["Away"] = away_team
 
-            # Core predictions from the model
-            pred_result = model.predict_match(
-                home_team=home_team, away_team=away_team, max_goals=15
-            )
+    #         # Core predictions from the model
+    #         pred_result = model.predict_match(
+    #             home_team=home_team, away_team=away_team, max_goals=15
+    #         )
 
-            result |= pred_result
+    #         result |= pred_result
 
-            results.append(result)
+    #         results.append(result)
 
-        preds_df = pd.DataFrame(results)
-        return preds_df.to_dict(orient="records")
+    #     preds_df = pd.DataFrame(results)
+    #     return preds_df.to_dict(orient="records")
 
 
 def get_historical_ppi(config: AppConfig) -> pd.DataFrame:

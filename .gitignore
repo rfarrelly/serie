@@ -13,12 +13,11 @@ wheels/
 .DS_Store
 *.csv
 .env
-model_training.log
 
 # Custom files and folders
 DATA
-results
-models
+zsd_configs
 temp.py
+
 
 !team_name_dictionary.csv
