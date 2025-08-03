@@ -568,7 +568,7 @@ def run_daily_prediction_example():
 
     # Load upcoming fixtures (your existing pipeline data)
     try:
-        fixtures_df = pd.read_csv("latest_ppi_and_odds.csv")
+        fixtures_df = pd.read_csv("fixtures_ppi_and_odds.csv")
 
         # Generate ZSD predictions
         zsd_predictions = generate_zsd_predictions(processor, fixtures_df)

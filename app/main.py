@@ -169,7 +169,7 @@ def merge_future_odds_data():
     merged_df = merged_df[columns].sort_values(by="PPI_Diff")
     print(f"Merged future odds size: {merged_df.shape[0]}")
 
-    merged_df.to_csv("latest_ppi_and_odds.csv", index=False)
+    merged_df.to_csv("fixtures_ppi_and_odds.csv", index=False)
 
 
 def check_parameter_optimization_needed():
@@ -303,7 +303,7 @@ def main():
 
     try:
         # Load the merged future data for ZSD predictions
-        fixtures_with_odds = pd.read_csv("latest_ppi_and_odds.csv")
+        fixtures_with_odds = pd.read_csv("fixtures_ppi_and_odds.csv")
 
         # Fit ZSD models with latest historical data
         print("Fitting ZSD models with latest data...")
@@ -387,7 +387,9 @@ def main():
 
     except FileNotFoundError as e:
         print(f"Could not run enhanced ZSD predictions: {e}")
-        print("Make sure historical_ppi_and_odds.csv and latest_ppi_and_odds.csv exist")
+        print(
+            "Make sure historical_ppi_and_odds.csv and fixtures_ppi_and_odds.csv exist"
+        )
     except Exception as e:
         print(f"Error in enhanced ZSD predictions: {e}")
         import traceback
@@ -475,7 +477,7 @@ def run_predictions_only():
         zsd_processor = setup_zsd_integration(DEFAULT_CONFIG)
 
         # Load fixtures
-        fixtures_with_odds = pd.read_csv("latest_ppi_and_odds.csv")
+        fixtures_with_odds = pd.read_csv("fixtures_ppi_and_odds.csv")
 
         # Fit models and generate predictions
         daily_model_fitting(zsd_processor)
