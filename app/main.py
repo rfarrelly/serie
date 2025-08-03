@@ -113,20 +113,22 @@ def merge_future_odds_data():
             "PSA",
         ]
     ]
-    fbduk_extra_odds_data = pd.read_csv("new_league_fixtures.csv").rename(
-        {"HomeTeam": "Home", "AwayTeam": "Away"}, axis="columns"
-    )[
-        [
-            "Date",
-            "Home",
-            "Away",
-            "PSH",
-            "PSD",
-            "PSA",
-        ]
-    ]
 
-    fbduk_odds_data = pd.concat([fbduk_main_odds_data, fbduk_extra_odds_data])
+    # fbduk_extra_odds_data = pd.read_csv("new_league_fixtures.csv").rename(
+    #     {"HomeTeam": "Home", "AwayTeam": "Away"}, axis="columns"
+    # )[
+    #     [
+    #         "Date",
+    #         "Home",
+    #         "Away",
+    #         "PSH",
+    #         "PSD",
+    #         "PSA",
+    #     ]
+    # ]
+
+    # fbduk_odds_data = pd.concat([fbduk_main_odds_data, fbduk_extra_odds_data])
+    fbduk_odds_data = fbduk_main_odds_data
 
     fbduk_odds_data = format_date(fbduk_odds_data)
 
@@ -252,8 +254,15 @@ def main():
         processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
         if GET_DATA == "1":
-            processor.get_fbref_data()
-            processor.get_fbduk_data()
+            try:
+                processor.get_fbref_data()
+                processor.get_fbduk_data()
+            except Exception as e:
+                print(
+                    f"There was an error getting data for {league.name} {DEFAULT_CONFIG.current_season}:"
+                )
+                print(e)
+                continue
 
         ppi = processor.get_points_performance_index()
 
