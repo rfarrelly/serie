@@ -41,6 +41,18 @@ class Leagues(Enum):
         "fbref_name": "National-League",
         "is_extra": False,
     }
+    SPL = {
+        "fbref_id": 40,
+        "fbduk_id": "SC0",
+        "fbref_name": "Scottish-Premiership",
+        "is_extra": False,
+    }
+    SCH = {
+        "fbref_id": 72,
+        "fbduk_id": "SC1",
+        "fbref_name": "Scottish-Championship",
+        "is_extra": False,
+    }
     SP1 = {
         "fbref_id": 12,
         "fbduk_id": "SP1",
@@ -139,13 +151,15 @@ class Leagues(Enum):
 
 @dataclass
 class AppConfig:
-    fbref_base_url: str = env_values.get("FBREF_BASE_URL")
-    fbduk_base_url_main: str = env_values.get("FBDUK_BASE_URL_MAIN")
-    fbduk_base_url_extra: str = env_values.get("FBDUK_BASE_URL_EXTRA")
-    current_season: str = env_values.get("CURRENT_SEASON")
-    previous_season: str = env_values.get("PREVIOUS_SEASON")
-    ppi_diff_threshold: float = float(env_values.get("PPI_DIFF_THRESHOLD"))
-    data_dir: Path = Path(env_values.get("DATA_DIR"))
+    def __init__(self, season: str | None = None):
+        self.fbref_base_url: str = env_values.get("FBREF_BASE_URL")
+        self.fbduk_base_url_main: str = env_values.get("FBDUK_BASE_URL_MAIN")
+        self.fbduk_base_url_extra: str = env_values.get("FBDUK_BASE_URL_EXTRA")
+        # Optional season for manual data retrieval
+        self.current_season: str = season or env_values.get("CURRENT_SEASON")
+        self.previous_season: str = env_values.get("PREVIOUS_SEASON")
+        self.ppi_diff_threshold: float = float(env_values.get("PPI_DIFF_THRESHOLD"))
+        self.data_dir: Path = Path(env_values.get("DATA_DIR"))
 
     @property
     def fbref_data_dir(self):

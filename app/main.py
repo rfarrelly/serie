@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from config import DEFAULT_CONFIG, END_DATE, GET_DATA, TODAY, Leagues
+from config import DEFAULT_CONFIG, END_DATE, TODAY, AppConfig, Leagues
 from processing import LeagueProcessor, get_historical_ppi
 from utils.datetime_helpers import format_date
 from utils.team_name_dict_builder import TeamNameManagerCLI
@@ -222,6 +222,19 @@ def run_parameter_optimization():
         return False
 
 
+def run_get_data(season: str):
+    config = AppConfig(season)
+    for league in Leagues:
+        processor = LeagueProcessor(league, config)
+        try:
+            processor.get_fbref_data()
+            processor.get_fbduk_data()
+        except Exception as e:
+            print(f"There was an error getting data for {league.name} {season} \r\n")
+            print(e)
+            continue
+
+
 def main():
     """
     Enhanced main function with ZSD Poisson integration.
@@ -252,17 +265,6 @@ def main():
         print(f"Processing {league.name} ({league.value['fbref_name']})")
 
         processor = LeagueProcessor(league, DEFAULT_CONFIG)
-
-        if GET_DATA == "1":
-            try:
-                processor.get_fbref_data()
-                processor.get_fbduk_data()
-            except Exception as e:
-                print(
-                    f"There was an error getting data for {league.name} {DEFAULT_CONFIG.current_season}:"
-                )
-                print(e)
-                continue
 
         ppi = processor.get_points_performance_index()
 
@@ -510,11 +512,14 @@ def run_predictions_only():
 if __name__ == "__main__":
     import sys
 
-    # Allow running different modes via command line arguments
     if len(sys.argv) > 1:
         mode = sys.argv[1].lower()
-
-        if mode == "optimize":
+        if mode == "get_data":
+            if len(sys.argv) > 2:  # season
+                run_get_data(sys.argv[2])
+        elif mode == "update_teams":
+            build_team_name_dictionary()
+        elif mode == "optimize":
             run_optimization_only()
         elif mode == "predict":
             run_predictions_only()

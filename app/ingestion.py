@@ -75,10 +75,11 @@ class DataIngestion:
             ~data_df["Notes"].isin(["Match Suspended", "Match Cancelled"])
         ]
 
+        if "Round" in data_df.columns:
+            data_df = self._drop_non_regular_matches(data_df)
+
         data_df["League"] = league_name
         data_df["Season"] = season
-
-        data_df = self._drop_non_regular_matches(data_df)
 
         unplayed_fixtures_df = (
             data_df[data_df["Score"].isna()][columns]
@@ -136,7 +137,10 @@ class DataIngestion:
         return 0, 0
 
     @staticmethod
-    def _drop_non_regular_matches(df, week_col="Wk"):
+    def _drop_non_regular_matches(df: pd.DataFrame):
         df = df.copy()
-        max_so_far = df[week_col].cummax()
-        return df[df[week_col] == max_so_far]
+        # Identify the first value we want to keep
+        first_value = df["Round"].iloc[0]
+
+        # Keep rows until the first non-matching one
+        return df[df["Round"] == first_value]
