@@ -235,6 +235,44 @@ def run_get_data(season: str):
             continue
 
 
+def run_latest_ppi():
+    ppi_all_leagues = []
+
+    for league in Leagues:
+        print(f"Processing {league.name} ({league.value['fbref_name']})")
+
+        processor = LeagueProcessor(league, DEFAULT_CONFIG)
+
+        ppi = processor.get_points_performance_index()
+
+        if ppi:
+            ppi_all_leagues.extend(ppi)
+
+    if ppi_all_leagues:
+        print(f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}")
+        ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
+
+        # ppi_latest = ppi_latest[
+        #     ppi_latest["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
+        # ]
+
+        ppi_latest.to_csv("latest_ppi.csv", index=False)
+        merge_future_odds_data()
+
+
+def run_historical_ppi():
+    historical_ppi = get_historical_ppi(DEFAULT_CONFIG)
+
+    # Handle matches terminated during season more generally if needs be
+    historical_ppi = historical_ppi[
+        ~historical_ppi["Home"].eq("Reus") & ~historical_ppi["Away"].eq("Reus")
+    ]
+
+    historical_ppi.to_csv("historical_ppi.csv", index=False)
+
+    merge_historical_odds_data()
+
+
 def main():
     """
     Enhanced main function with ZSD Poisson integration.
@@ -259,44 +297,10 @@ def main():
     print("RUNNING EXISTING PIPELINE (PPI + Basic ZSD)")
     print("=" * 60)
 
-    ppi_all_leagues = []
-
-    for league in Leagues:
-        print(f"Processing {league.name} ({league.value['fbref_name']})")
-
-        processor = LeagueProcessor(league, DEFAULT_CONFIG)
-
-        ppi = processor.get_points_performance_index()
-
-        if ppi:
-            ppi_all_leagues.extend(ppi)
-
-    # Step 4: Save your existing PPI results
-    if ppi_all_leagues:
-        print(f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}")
-        ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
-
-        # ppi_latest = ppi_latest[
-        #     ppi_latest["PPI_Diff"] <= DEFAULT_CONFIG.ppi_diff_threshold
-        # ]
-
-        ppi_latest.to_csv("latest_ppi.csv", index=False)
-
     # Step 6: Process historical data
     print("\n" + "=" * 60)
     print("PROCESSING HISTORICAL DATA")
     print("=" * 60)
-
-    historical_ppi = get_historical_ppi(DEFAULT_CONFIG)
-
-    # Handle matches terminated during season more generally if needs be
-    historical_ppi = historical_ppi[
-        ~historical_ppi["Home"].eq("Reus") & ~historical_ppi["Away"].eq("Reus")
-    ]
-
-    historical_ppi.to_csv("historical_ppi.csv", index=False)
-    merge_historical_odds_data()
-    merge_future_odds_data()
 
     # Step 7: Run enhanced ZSD predictions
     print("\n" + "=" * 60)
@@ -517,6 +521,10 @@ if __name__ == "__main__":
         if mode == "get_data":
             if len(sys.argv) > 2:  # season
                 run_get_data(sys.argv[2])
+        if mode == "latest_ppi":
+            run_latest_ppi()
+        if mode == "historical_ppi":
+            run_historical_ppi()
         elif mode == "update_teams":
             build_team_name_dictionary()
         elif mode == "optimize":
