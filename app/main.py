@@ -243,10 +243,13 @@ def run_latest_ppi():
 
         processor = LeagueProcessor(league, DEFAULT_CONFIG)
 
-        ppi = processor.get_points_performance_index()
-
-        if ppi:
-            ppi_all_leagues.extend(ppi)
+        try:
+            ppi = processor.get_points_performance_index()
+            if ppi:
+                ppi_all_leagues.extend(ppi)
+        except:
+            print(f"Error getting latest PPI for {processor.league_name}")
+            continue
 
     if ppi_all_leagues:
         print(f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}")
@@ -521,9 +524,9 @@ if __name__ == "__main__":
         if mode == "get_data":
             if len(sys.argv) > 2:  # season
                 run_get_data(sys.argv[2])
-        if mode == "latest_ppi":
+        elif mode == "latest_ppi":
             run_latest_ppi()
-        if mode == "historical_ppi":
+        elif mode == "historical_ppi":
             run_historical_ppi()
         elif mode == "update_teams":
             build_team_name_dictionary()

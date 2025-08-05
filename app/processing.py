@@ -56,13 +56,18 @@ class LeagueProcessor:
                 fixture.Away,
             )
 
-            home_ppi_df = compute_points_performance_index(
-                home_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
-            )
+            try:
+                home_ppi_df = compute_points_performance_index(
+                    home_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
+                )
 
-            away_ppi_df = compute_points_performance_index(
-                away_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
-            )
+                away_ppi_df = compute_points_performance_index(
+                    away_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
+                )
+            except:
+                print(f"Error computing PPI for {self.league_name} - {date}")
+                print(f"Continuing ...")
+                continue
 
             home_ppi_latest = home_ppi_df.tail(1)["PPI"].values[0]
             away_ppi_latest = away_ppi_df.tail(1)["PPI"].values[0]
@@ -141,12 +146,17 @@ def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
 
         hppg, appg, tppg = compute_ppg(fixtures)
 
-        ppi_df_list = [
-            compute_points_performance_index(
-                team, fixtures, hppg, appg, tppg
-            ).sort_values("Date")
-            for team in teams
-        ]
+        try:
+            ppi_df_list = [
+                compute_points_performance_index(
+                    team, fixtures, hppg, appg, tppg
+                ).sort_values("Date")
+                for team in teams
+            ]
+        except:
+            print(f"Error computing historical PPI for {file}")
+            print(f"Continuing ...")
+            continue
 
         for df in ppi_df_list:
             df[["OppPPG", "PPG", "PPI"]] = df[["OppPPG", "PPG", "PPI"]].shift(
