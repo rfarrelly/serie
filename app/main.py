@@ -72,7 +72,7 @@ def merge_historical_odds_data():
     fbref_historical_rpi_data = pd.read_csv("historical_ppi.csv")
 
     print(f"fbduk input matches (odds): {fbduk_odds_data.shape[0]}")
-    print(f"fbref imput matches: {fbref_historical_rpi_data.shape[0]}")
+    print(f"fbref input matches: {fbref_historical_rpi_data.shape[0]}")
 
     team_name_dict = pd.read_csv("team_name_dictionary.csv")
 
@@ -84,14 +84,43 @@ def merge_historical_odds_data():
     fbduk_odds_data["Home"] = fbduk_odds_data["Home"].apply(map_team_name)
     fbduk_odds_data["Away"] = fbduk_odds_data["Away"].apply(map_team_name)
 
+    print(f"fbduk after mapping: {fbduk_odds_data.shape[0]}")
+
+    # Identify rows in fbduk that don't match any in fbref
+    extra_fbduk_rows = pd.merge(
+        fbduk_odds_data,
+        fbref_historical_rpi_data,
+        on=["Date", "Home", "Away"],
+        how="left",
+        indicator=True,
+    )
+
+    # Keep only those that didn't match
+    fbduk_not_in_fbref = extra_fbduk_rows[extra_fbduk_rows["_merge"] == "left_only"]
+
+    print(
+        f"{fbduk_not_in_fbref.shape[0]} fbduk rows not found in fbref (potentially non-reg season):"
+    )
+    print(fbduk_not_in_fbref[["Date", "Home", "Away"]].drop_duplicates())
+
     merged_df = (
-        pd.merge(
-            fbref_historical_rpi_data,
-            fbduk_odds_data,
-            on=["Date", "Home", "Away"],
-            how="left",
-        ).sort_values("Date")
-    ).rename({"Season_x": "Season", "Wk_x": "Wk"}, axis="columns")
+        (
+            pd.merge(
+                fbref_historical_rpi_data,
+                fbduk_odds_data,
+                on=["Date", "Home", "Away"],
+                how="left",
+            ).sort_values("Date")
+        )
+        .rename({"Season_x": "Season", "Wk_x": "Wk"}, axis="columns")
+        .drop_duplicates(subset=["Season", "Home", "Away"], keep="first")
+    )
+
+    # Identify unmerged rows based on missing odds column (e.g., PSCH)
+    unmerged_rows = merged_df[merged_df["PSCH"].isna()]
+
+    print(f"{unmerged_rows.shape[0]} unmerged historical odds rows:")
+    print(unmerged_rows[["Date", "Home", "Away"]])
 
     print(f"Merged historical odds size: {merged_df.shape[0]}")
     print(f"{merged_df[merged_df['PSCH'].isna()].shape[0]} unmerged historical odds")
