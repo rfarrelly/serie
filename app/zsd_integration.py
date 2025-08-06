@@ -199,7 +199,7 @@ class ZSDModelManager:
         self,
         historical_data: pd.DataFrame,
         league: str,
-        min_training_matches: int = 200,
+        min_training_matches: int = 180,
     ) -> Optional[ZSDPoissonModel]:
         """
         Fit a ZSD Poisson model for a specific league using optimized parameters.

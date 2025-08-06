@@ -3,6 +3,10 @@ import difflib
 import os
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
+import pandas as pd
+from config import DEFAULT_CONFIG
+
 
 class TeamNameMapper:
     """
@@ -442,6 +446,205 @@ class TeamNameManagerCLI:
         if interactive:
             print(f"Processing {len(team_list)} teams for source '{source}'")
         self.process_batch(team_list, source, auto_match, auto_threshold, interactive)
+
+
+def build_team_name_dictionary():
+    """
+    Standalone function to build team name dictionary.
+    Moved from main.py for better organization.
+    """
+    data_sources = ["fbref", "fbduk"]
+    csv_path = "team_name_dictionary.csv"
+
+    # Create manager
+    manager = TeamNameManagerCLI(csv_path, data_sources)
+
+    # Extract unique team names from fbduk files
+    fbduk_files = list(DEFAULT_CONFIG.fbduk_data_dir.rglob("*.csv"))
+
+    if fbduk_files:
+        fbduk_teams = np.unique(
+            pd.concat(
+                [
+                    pd.read_csv(str(file))[["Home", "Away"]]
+                    for file in fbduk_files
+                    if file.is_file()
+                ]
+            )
+            .to_numpy()
+            .flatten()
+        )
+    else:
+        print("Warning: No fbduk files found")
+        fbduk_teams = np.array([])
+
+    # Extract unique team names from fbref files
+    fbref_files = list(DEFAULT_CONFIG.fbref_data_dir.rglob("*.csv"))
+
+    if fbref_files:
+        fbref_teams = np.unique(
+            pd.concat(
+                [
+                    pd.read_csv(str(file))[["Home", "Away"]]
+                    for file in fbref_files
+                    if file.is_file()
+                ]
+            )
+            .to_numpy()
+            .flatten()
+        )
+    else:
+        print("Warning: No fbref files found")
+        fbref_teams = np.array([])
+
+    print(f"Found {len(fbref_teams)} unique fbref teams")
+    print(f"Found {len(fbduk_teams)} unique fbduk teams")
+
+    if len(fbref_teams) > 0:
+        manager.import_team_list(
+            fbref_teams, "fbref", auto_match=True, auto_threshold=0.7, interactive=True
+        )
+
+    if len(fbduk_teams) > 0:
+        manager.import_team_list(
+            fbduk_teams, "fbduk", auto_match=True, auto_threshold=0.7, interactive=True
+        )
+
+    print(f"Dictionary saved to {csv_path}")
+
+    # Validate the dictionary
+    try:
+        dict_df = pd.read_csv(csv_path)
+        print(f"Dictionary contains {len(dict_df)} team mappings")
+
+        # Check for unmapped teams
+        unmapped_fbref = dict_df[dict_df["fbref"].isna()]
+        unmapped_fbduk = dict_df[dict_df["fbduk"].isna()]
+
+        if len(unmapped_fbref) > 0:
+            print(f"Warning: {len(unmapped_fbref)} fbref teams are unmapped")
+
+        if len(unmapped_fbduk) > 0:
+            print(f"Warning: {len(unmapped_fbduk)} fbduk teams are unmapped")
+
+    except Exception as e:
+        print(f"Error validating dictionary: {e}")
+
+
+def validate_team_mappings():
+    """
+    Validate existing team name mappings.
+    """
+    try:
+        dict_df = pd.read_csv("team_name_dictionary.csv")
+
+        print("Team Name Dictionary Validation:")
+        print(f"  Total mappings: {len(dict_df)}")
+
+        # Check for duplicates
+        fbref_duplicates = dict_df["fbref"].duplicated().sum()
+        fbduk_duplicates = dict_df["fbduk"].duplicated().sum()
+
+        if fbref_duplicates > 0:
+            print(f"  WARNING: {fbref_duplicates} duplicate fbref entries")
+
+        if fbduk_duplicates > 0:
+            print(f"  WARNING: {fbduk_duplicates} duplicate fbduk entries")
+
+        # Check for missing mappings
+        missing_fbref = dict_df["fbref"].isna().sum()
+        missing_fbduk = dict_df["fbduk"].isna().sum()
+
+        if missing_fbref > 0:
+            print(f"  WARNING: {missing_fbref} entries missing fbref mapping")
+
+        if missing_fbduk > 0:
+            print(f"  WARNING: {missing_fbduk} entries missing fbduk mapping")
+
+        # Show sample mappings
+        print("\nSample mappings:")
+        sample_mappings = dict_df.dropna().head(5)
+        for _, row in sample_mappings.iterrows():
+            print(f"  {row['fbduk']} -> {row['fbref']}")
+
+        return len(dict_df), fbref_duplicates == 0 and fbduk_duplicates == 0
+
+    except FileNotFoundError:
+        print("team_name_dictionary.csv not found. Run 'update_teams' mode first.")
+        return 0, False
+    except Exception as e:
+        print(f"Error validating team mappings: {e}")
+        return 0, False
+
+
+def get_unmapped_teams():
+    """
+    Identify teams that exist in data files but are not in the mapping dictionary.
+    """
+    try:
+        # Load existing dictionary
+        try:
+            dict_df = pd.read_csv("team_name_dictionary.csv")
+            mapped_fbref = set(dict_df["fbref"].dropna())
+            mapped_fbduk = set(dict_df["fbduk"].dropna())
+        except FileNotFoundError:
+            print("No existing dictionary found")
+            mapped_fbref, mapped_fbduk = set(), set()
+
+        # Get teams from current data files
+        fbref_files = list(DEFAULT_CONFIG.fbref_data_dir.rglob("*.csv"))
+        fbduk_files = list(DEFAULT_CONFIG.fbduk_data_dir.rglob("*.csv"))
+
+        current_fbref = set()
+        current_fbduk = set()
+
+        if fbref_files:
+            current_fbref = set(
+                np.unique(
+                    pd.concat(
+                        [
+                            pd.read_csv(str(file))[["Home", "Away"]]
+                            for file in fbref_files
+                            if file.is_file()
+                        ]
+                    )
+                    .to_numpy()
+                    .flatten()
+                )
+            )
+
+        if fbduk_files:
+            current_fbduk = set(
+                np.unique(
+                    pd.concat(
+                        [
+                            pd.read_csv(str(file))[["Home", "Away"]]
+                            for file in fbduk_files
+                            if file.is_file()
+                        ]
+                    )
+                    .to_numpy()
+                    .flatten()
+                )
+            )
+
+        # Find unmapped teams
+        unmapped_fbref = current_fbref - mapped_fbref
+        unmapped_fbduk = current_fbduk - mapped_fbduk
+
+        print("Unmapped Teams Analysis:")
+        print(
+            f"  Unmapped fbref teams ({len(unmapped_fbref)}): {sorted(list(unmapped_fbref))[:10]}"
+        )
+        print(
+            f"  Unmapped fbduk teams ({len(unmapped_fbduk)}): {sorted(list(unmapped_fbduk))[:10]}"
+        )
+
+        return unmapped_fbref, unmapped_fbduk
+
+    except Exception as e:
+        print(f"Error identifying unmapped teams: {e}")
+        return set(), set()
 
 
 def main():
