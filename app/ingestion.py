@@ -27,7 +27,7 @@ class DataIngestion:
         if prefix:
             filename = prefix + filename
         df.to_csv(f"{dir}/{filename}", index=False)
-        print(f"File '{filename}' downloaded and saved to '{dir}'")
+        print(f"File '{filename}' downloaded and saved to '{dir}'\r\n")
 
     def get_fbref_data(self, league: Leagues, season: str):
         league_name = league.fbref_name
