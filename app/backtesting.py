@@ -13,8 +13,6 @@ from zsd_poisson_model import ModelConfig, ZSDPoissonModel
 
 warnings.filterwarnings("ignore")
 
-# L1=0.0100, L2=0.1000, Team=0.0100
-
 
 @dataclass
 class BackTestConfig:

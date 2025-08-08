@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from backtesting import BackTestConfig, ImprovedBacktester
+from config import DEFAULT_CONFIG
 from zsd_poisson_model import ModelConfig, ZSDPoissonModel
 
 warnings.filterwarnings("ignore")
@@ -66,7 +67,7 @@ class ZSDModelManager:
         ]
 
         # (Optional) Random sample if you want to reduce size
-        param_combinations = random.sample(all_param_combinations, k=20)
+        param_combinations = random.sample(all_param_combinations, k=5)
 
         best_config = None
         best_score = float("inf")
@@ -134,9 +135,20 @@ class ZSDModelManager:
             print(f"  Best score: {best_score:.4f}")
 
             if best_results:
+                breakpoint()
                 print(
                     f"  Performance: {best_results.metrics.get('accuracy', 0):.3f} accuracy, "
                     f"{best_results.metrics.get('roi_percent', 0):.1f}% ROI"
+                )
+
+                # Save results to CSV
+                backtester.save_betting_results_to_csv(
+                    best_results,
+                    f"optimisation_validation/betting_results/{league}_best_betting_results.csv",
+                )
+                backtester.save_predictions_to_csv(
+                    best_results,
+                    f"optimisation_validation/prediction_results/{league}_best_predictions.csv",
                 )
 
         # Save configuration
@@ -403,7 +415,7 @@ class ZSDIntegratedProcessor:
             league_data = historical_data[historical_data["League"] == league]
 
             # Only optimize if we have sufficient data and it's been a while
-            if len(league_data) > 200 and self.should_reoptimize_parameters(league):
+            if len(league_data) > 179 and self.should_reoptimize_parameters(league):
                 self.zsd_manager.optimize_league_parameters(
                     historical_data=historical_data,
                     league=league,

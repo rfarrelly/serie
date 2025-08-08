@@ -2,6 +2,12 @@ import sys
 from pathlib import Path
 
 import pandas as pd
+from backtesting_validator import (
+    analyze_market_efficiency_violations,
+    benchmark_against_random_betting,
+    manual_bet_inspection_helper,
+    validate_zsd_backtest_results,
+)
 from config import DEFAULT_CONFIG, AppConfig, Leagues
 from processing import LeagueProcessor, get_historical_ppi
 from utils.data_merging import (
@@ -351,6 +357,46 @@ class BettingPipeline:
 
         return comparison_summary
 
+    def run_backtest_validation(self, betting_csv, predictions_csv):
+        print("Running comprehensive backtest validation...")
+        # 1. Main validation
+        validation_result = validate_zsd_backtest_results(
+            betting_csv, predictions_csv, self.pipeline_config
+        )
+
+        if validation_result:
+            print(f"\nValidation complete!")
+            print(f"Valid: {validation_result.is_valid}")
+            print(f"Confidence: {validation_result.confidence_score:.2f}")
+
+        # 2. Manual inspection helper
+        try:
+            print(f"\nCreating manual inspection helper...")
+            manual_bet_inspection_helper(betting_csv, n_samples=50)
+        except FileNotFoundError:
+            print("Betting results file not found - run backtest first")
+
+        # 3. Additional validation checks
+        print(f"\n" + "=" * 60)
+        print("ADDITIONAL VALIDATION CHECKS")
+        print("=" * 60)
+
+        # Market efficiency check
+        analyze_market_efficiency_violations(betting_csv)
+
+        # Random betting benchmark
+        benchmark_against_random_betting(betting_csv)
+
+        # Cross-validation note
+        print(f"\n" + "=" * 60)
+        print("RECOMMENDED ADDITIONAL CHECKS")
+        print("=" * 60)
+        print("1. Run backtest on different time periods")
+        print("2. Test on different leagues separately")
+        print("3. Use walk-forward validation")
+        print("4. Check results against betting exchange data")
+        print("5. Paper trade for a few weeks before going live")
+
     def run_full_pipeline(self) -> bool:
         """Run the complete betting pipeline."""
         print("=" * 60)
@@ -473,6 +519,18 @@ def main():
 
         elif mode == "optimize":
             pipeline.run_parameter_optimization()
+
+        elif mode == "validate":
+            if len(sys.argv) > 2:
+                betting_filename = sys.argv[2]
+                prediction_filename = sys.argv[3]
+                pipeline.run_backtest_validation(betting_filename, prediction_filename)
+            else:
+                print("Usage: uv run app/main.py validate <filename>")
+                print(
+                    "Example: uv run app/main.py validate optimisation_validation/betting_results/Premier-League_best_betting_results.csv "
+                    "optimisation_validation/prediction_results/Premier-League_best_predictions.csv"
+                )
 
         elif mode == "predict":
             pipeline.run_zsd_predictions()

@@ -18,6 +18,6 @@ wheels/
 DATA
 zsd_configs
 temp.py
-
+zsd_validation_report.html
 
 !team_name_dictionary.csv
