@@ -1,4 +1,4 @@
-# refactored_zsd_poisson_model.py
+# enhanced_zsd_poisson_model.py
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Protocol, Tuple
@@ -138,6 +138,47 @@ class ZIPPredictor(BasePoissonCalculator, PredictorProtocol):
         # Calculate adjustment with bounds
         adjustment = np.where(expected > 1e-6, observed / expected, 1.0)
         return np.clip(adjustment, 0.1, 5.0)
+
+
+class MOVPredictor(PredictorProtocol):
+    """Margin of Victory based predictor."""
+
+    def __init__(self, config: ModelConfig, mov_model):
+        self.config = config
+        self.mov_model = mov_model
+
+    def predict_outcome_probabilities(
+        self,
+        lambda_home: float,
+        lambda_away: float,
+        mov_prediction: float = None,
+        mov_std_error: float = None,
+    ) -> Tuple[float, float, float]:
+        """Predict match outcomes based on MOV model."""
+        if mov_prediction is None:
+            # Calculate MOV from lambda values if not provided
+            raw_mov = lambda_home - lambda_away
+            mov_prediction = (
+                self.mov_model.params[0] + self.mov_model.params[1] * raw_mov
+            )
+
+        if mov_std_error is None:
+            mov_std_error = np.sqrt(self.mov_model.mse_resid)
+
+        # Use normal distribution centered on MOV prediction
+        # Probability of home win: P(MOV > 0.5)
+        # Probability of draw: P(-0.5 <= MOV <= 0.5)
+        # Probability of away win: P(MOV < -0.5)
+
+        prob_home = 1 - norm.cdf(0.5, mov_prediction, mov_std_error)
+        prob_away = norm.cdf(-0.5, mov_prediction, mov_std_error)
+        prob_draw = 1 - prob_home - prob_away
+
+        # Ensure probabilities are valid and sum to 1
+        prob_draw = max(0.05, prob_draw)  # Minimum draw probability
+        total = prob_home + prob_draw + prob_away
+
+        return (prob_home / total, prob_draw / total, prob_away / total)
 
 
 class TeamRatingsOptimizer:
@@ -376,11 +417,19 @@ class ZSDPoissonModel:
         # Predict MOV
         raw_mov = lambda_home - lambda_away
         predicted_mov = self.mov_model.params[0] + self.mov_model.params[1] * raw_mov
+        mov_std_error = np.sqrt(self.mov_model.mse_resid)
 
-        # Get outcome probabilities
-        prob_home, prob_draw, prob_away = self.predictors[
-            method
-        ].predict_outcome_probabilities(lambda_home, lambda_away)
+        # Get outcome probabilities based on method
+        if method == "mov":
+            prob_home, prob_draw, prob_away = self.predictors[
+                method
+            ].predict_outcome_probabilities(
+                lambda_home, lambda_away, predicted_mov, mov_std_error
+            )
+        else:
+            prob_home, prob_draw, prob_away = self.predictors[
+                method
+            ].predict_outcome_probabilities(lambda_home, lambda_away)
 
         return MatchPrediction(
             home_team=home_team,
@@ -388,7 +437,7 @@ class ZSDPoissonModel:
             lambda_home=lambda_home,
             lambda_away=lambda_away,
             mov_prediction=predicted_mov,
-            mov_std_error=np.sqrt(self.mov_model.mse_resid),
+            mov_std_error=mov_std_error,
             prob_home_win=prob_home,
             prob_draw=prob_draw,
             prob_away_win=prob_away,
@@ -493,4 +542,5 @@ class ZSDPoissonModel:
         self.predictors = {
             "poisson": PoissonPredictor(self.config),
             "zip": ZIPPredictor(self.config, self.data),
+            "mov": MOVPredictor(self.config, self.mov_model),
         }

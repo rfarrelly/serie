@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from backtesting import BackTestConfig, ImprovedBacktester
-from config import DEFAULT_CONFIG
+from utils.odds_helpers import get_no_vig_odds_multiway
 from zsd_poisson_model import ModelConfig, ZSDPoissonModel
 
 warnings.filterwarnings("ignore")
@@ -135,7 +135,6 @@ class ZSDModelManager:
             print(f"  Best score: {best_score:.4f}")
 
             if best_results:
-                breakpoint()
                 print(
                     f"  Performance: {best_results.metrics.get('accuracy', 0):.3f} accuracy, "
                     f"{best_results.metrics.get('roi_percent', 0):.1f}% ROI"
@@ -250,9 +249,7 @@ class ZSDModelManager:
             print(f"Error fitting model for {league}: {e}")
             return None
 
-    def predict_matches(
-        self, fixtures_df: pd.DataFrame, method: str = "zip"
-    ) -> pd.DataFrame:
+    def predict_matches(self, fixtures_df: pd.DataFrame) -> pd.DataFrame:
         """
         Generate predictions for upcoming matches using fitted models.
         """
@@ -271,8 +268,12 @@ class ZSDModelManager:
                 continue
 
             try:
-                # Generate prediction
-                prediction = model.predict_match(home_team, away_team, method=method)
+                # Generate predictions for all methods
+                poisson_pred = model.predict_match(
+                    home_team, away_team, method="poisson"
+                )
+                zip_pred = model.predict_match(home_team, away_team, method="zip")
+                mov_pred = model.predict_match(home_team, away_team, method="mov")
 
                 # Convert to dictionary and add match info
                 pred_dict = {
@@ -280,14 +281,27 @@ class ZSDModelManager:
                     "League": league,
                     "Home": home_team,
                     "Away": away_team,
-                    "ZSD_Prob_H": prediction.prob_home_win,
-                    "ZSD_Prob_D": prediction.prob_draw,
-                    "ZSD_Prob_A": prediction.prob_away_win,
-                    "ZSD_Lambda_H": prediction.lambda_home,
-                    "ZSD_Lambda_A": prediction.lambda_away,
-                    "ZSD_MOV": prediction.mov_prediction,
-                    "ZSD_MOV_SE": prediction.mov_std_error,
-                    "Model_Type": prediction.model_type,
+                    # Basic Poisson predictions
+                    "Poisson_Prob_H": poisson_pred.prob_home_win,
+                    "Poisson_Prob_D": poisson_pred.prob_draw,
+                    "Poisson_Prob_A": poisson_pred.prob_away_win,
+                    # ZIP predictions (original ZSD)
+                    "ZIP_Prob_H": zip_pred.prob_home_win,
+                    "ZIP_Prob_D": zip_pred.prob_draw,
+                    "ZIP_Prob_A": zip_pred.prob_away_win,
+                    # MOV-based predictions
+                    "MOV_Prob_H": mov_pred.prob_home_win,
+                    "MOV_Prob_D": mov_pred.prob_draw,
+                    "MOV_Prob_A": mov_pred.prob_away_win,
+                    # Original fields for backward compatibility
+                    "ZSD_Prob_H": zip_pred.prob_home_win,
+                    "ZSD_Prob_D": zip_pred.prob_draw,
+                    "ZSD_Prob_A": zip_pred.prob_away_win,
+                    "ZSD_Lambda_H": zip_pred.lambda_home,
+                    "ZSD_Lambda_A": zip_pred.lambda_away,
+                    "ZSD_MOV": zip_pred.mov_prediction,
+                    "ZSD_MOV_SE": zip_pred.mov_std_error,
+                    "Model_Type": zip_pred.model_type,
                 }
 
                 # Add any additional columns from the original fixture
@@ -300,7 +314,6 @@ class ZSDModelManager:
             except Exception as e:
                 print(f"Error predicting {home_team} vs {away_team} in {league}: {e}")
                 continue
-
         return pd.DataFrame(predictions)
 
     def get_betting_candidates(
@@ -311,11 +324,11 @@ class ZSDModelManager:
     ) -> pd.DataFrame:
         """
         Identify betting candidates based on model predictions vs market odds.
+        Now includes all prediction methods and enhanced calculations.
         """
         if len(predictions_df) == 0:
             return pd.DataFrame()
 
-        # Calculate fair probabilities from odds if available
         betting_candidates = []
 
         for _, pred in predictions_df.iterrows():
@@ -326,39 +339,93 @@ class ZSDModelManager:
                 continue
 
             odds = [pred["PSH"], pred["PSD"], pred["PSA"]]
-            model_probs = [pred["ZSD_Prob_H"], pred["ZSD_Prob_D"], pred["ZSD_Prob_A"]]
 
-            # Calculate implied probabilities (simplified, you might want to use your odds helpers)
-            implied_probs = [1 / odd for odd in odds]
-            total_implied = sum(implied_probs)
-            fair_probs = [p / total_implied for p in implied_probs]  # Remove vig
+            # Get all prediction probabilities
+            poisson_probs = [
+                pred["Poisson_Prob_H"],
+                pred["Poisson_Prob_D"],
+                pred["Poisson_Prob_A"],
+            ]
+            zip_probs = [pred["ZIP_Prob_H"], pred["ZIP_Prob_D"], pred["ZIP_Prob_A"]]
+            mov_probs = [pred["MOV_Prob_H"], pred["MOV_Prob_D"], pred["MOV_Prob_A"]]
 
-            # Calculate edges
-            edges = [model_probs[i] - fair_probs[i] for i in range(3)]
-            max_edge = max(edges)
+            try:
+                # Calculate no-vig fair odds and probabilities
+                no_vig_odds = get_no_vig_odds_multiway(odds)
+                no_vig_probs = [1 / odd for odd in no_vig_odds]
 
-            if max_edge >= edge_threshold:
-                bet_idx = edges.index(max_edge)
-                bet_types = ["Home", "Draw", "Away"]
+                # Calculate weighted probabilities
+                # Average of model predictions * 0.1 + No vig probs * 0.9
+                model_avg_probs = [
+                    (poisson_probs[i] + zip_probs[i] + mov_probs[i]) / 3
+                    for i in range(3)
+                ]
 
-                candidate = {
-                    **pred.to_dict(),
-                    "Bet_Type": bet_types[bet_idx],
-                    "Edge": max_edge,
-                    "Model_Prob": model_probs[bet_idx],
-                    "Fair_Prob": fair_probs[bet_idx],
-                    "Odds": odds[bet_idx],
-                }
+                weighted_probs = [
+                    model_avg_probs[i] * 0.1 + no_vig_probs[i] * 0.9 for i in range(3)
+                ]
 
-                betting_candidates.append(candidate)
+                # Calculate fair odds from weighted probabilities
+                fair_odds = [1 / prob for prob in weighted_probs]
+
+                # Calculate edges using weighted probabilities
+                # edges = [weighted_probs[i] - no_vig_probs[i] for i in range(3)]
+                edges = [fair_odds[i] * weighted_probs[i] - 1 for i in range(3)]
+                max_edge = max(edges)
+                if max_edge >= edge_threshold:
+                    bet_idx = edges.index(max_edge)
+                    bet_types = ["Home", "Draw", "Away"]
+
+                    # Start with all original prediction data
+                    candidate = pred.to_dict()
+
+                    # Add betting-specific fields
+                    candidate.update(
+                        {
+                            "Bet_Type": bet_types[bet_idx],
+                            "Edge": max_edge,
+                            "EV_H": edges[0],
+                            "EV_D": edges[1],
+                            "EV_A": edges[2],
+                            # No vig calculations
+                            "NoVig_Odds_H": no_vig_odds[0],
+                            "NoVig_Odds_D": no_vig_odds[1],
+                            "NoVig_Odds_A": no_vig_odds[2],
+                            "NoVig_Prob_H": no_vig_probs[0],
+                            "NoVig_Prob_D": no_vig_probs[1],
+                            "NoVig_Prob_A": no_vig_probs[2],
+                            # Model average probabilities
+                            "ModelAvg_Prob_H": model_avg_probs[0],
+                            "ModelAvg_Prob_D": model_avg_probs[1],
+                            "ModelAvg_Prob_A": model_avg_probs[2],
+                            # Weighted probabilities
+                            "Weighted_Prob_H": weighted_probs[0],
+                            "Weighted_Prob_D": weighted_probs[1],
+                            "Weighted_Prob_A": weighted_probs[2],
+                            # Fair odds
+                            "Fair_Odds_H": fair_odds[0],
+                            "Fair_Odds_D": fair_odds[1],
+                            "Fair_Odds_A": fair_odds[2],
+                            # Selected bet details
+                            "Model_Prob": weighted_probs[bet_idx],
+                            "Fair_Prob": no_vig_probs[bet_idx],
+                            "Odds": odds[bet_idx],
+                            "Fair_Odds_Selected": fair_odds[bet_idx],
+                        }
+                    )
+
+                    betting_candidates.append(candidate)
+
+            except Exception as e:
+                print(
+                    f"Error calculating betting metrics for {pred['Home']} vs {pred['Away']}: {e}"
+                )
+                continue
 
         # Sort by edge and return top candidates
         candidates_df = pd.DataFrame(betting_candidates)
         if len(candidates_df) > 0:
-            candidates_df = candidates_df.sort_values("Edge", ascending=False).head(
-                max_candidates
-            )
-
+            candidates_df = candidates_df.sort_values("Edge", ascending=False)
         return candidates_df
 
 
@@ -440,8 +507,7 @@ class ZSDIntegratedProcessor:
 
     def get_zsd_predictions(self, fixtures_df: pd.DataFrame) -> List[Dict]:
         """
-        Get ZSD Poisson predictions for upcoming fixtures.
-        This replaces/augments your existing get_zsd_poisson method.
+        Get ZSD Poisson predictions for upcoming fixtures with enhanced features.
         """
         if len(fixtures_df) == 0:
             return []
@@ -463,38 +529,23 @@ class ZSDIntegratedProcessor:
         print(f"Found {len(betting_candidates)} betting candidates")
 
         # Return all predictions, but mark betting candidates
-        all_predictions = predictions_df.to_dict("records")
+        all_betting_candidates = betting_candidates.to_dict("records")
 
         # Add betting flag
         candidate_matches = set()
-        if len(betting_candidates) > 0:
-            for _, candidate in betting_candidates.iterrows():
-                match_id = (
-                    f"{candidate['Date']}_{candidate['Home']}_{candidate['Away']}"
-                )
+        if len(predictions_df) > 0:
+            for _, pred in predictions_df.iterrows():
+                match_id = f"{pred['Date']}_{pred['Home']}_{pred['Away']}"
                 candidate_matches.add(match_id)
 
-        for pred in all_predictions:
-            match_id = f"{pred['Date']}_{pred['Home']}_{pred['Away']}"
-            pred["Is_Betting_Candidate"] = match_id in candidate_matches
+        for candidate in all_betting_candidates:
+            match_id = f"{candidate['Date']}_{candidate['Home']}_{candidate['Away']}"
+            candidate["Is_Betting_Candidate"] = match_id in candidate_matches
 
-            # Add edge info if it's a betting candidate
-            if pred["Is_Betting_Candidate"]:
-                candidate_row = betting_candidates[
-                    (betting_candidates["Home"] == pred["Home"])
-                    & (betting_candidates["Away"] == pred["Away"])
-                    & (betting_candidates["Date"] == pred["Date"])
-                ]
-                if len(candidate_row) > 0:
-                    pred["Edge"] = candidate_row.iloc[0]["Edge"]
-                    pred["Bet_Type"] = candidate_row.iloc[0]["Bet_Type"]
-
-        return all_predictions
+        return all_betting_candidates
 
 
-# Integration functions for your main.py
-
-
+# Integration functions for your main.py - keeping original functions unchanged
 def setup_zsd_integration(config):
     """
     Initialize ZSD integration. Call this once when setting up your pipeline.
@@ -550,9 +601,7 @@ def generate_zsd_predictions(
         return []
 
 
-# Example usage patterns:
-
-
+# Example usage patterns remain the same
 def run_parameter_optimization_example():
     """
     Example of how to run parameter optimization (do this monthly/seasonally).
@@ -602,7 +651,10 @@ def run_daily_prediction_example():
                         f"    Bet: {candidate.get('Bet_Type', 'N/A')}, Edge: {candidate.get('Edge', 0):.3f}"
                     )
                     print(
-                        f"    ZSD Probs: H={candidate['ZSD_Prob_H']:.3f}, D={candidate['ZSD_Prob_D']:.3f}, A={candidate['ZSD_Prob_A']:.3f}"
+                        f"    Weighted Probs: H={candidate.get('Weighted_Prob_H', 0):.3f}, D={candidate.get('Weighted_Prob_D', 0):.3f}, A={candidate.get('Weighted_Prob_A', 0):.3f}"
+                    )
+                    print(
+                        f"    Fair Odds: H={candidate.get('Fair_Odds_H', 0):.2f}, D={candidate.get('Fair_Odds_D', 0):.2f}, A={candidate.get('Fair_Odds_A', 0):.2f}"
                     )
             else:
                 print("No ZSD betting candidates found")

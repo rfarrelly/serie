@@ -59,8 +59,6 @@ class BacktestValidator:
                 & (historical_df["Season"].isin([test_season]))
             ]
 
-            breakpoint()
-
             print(f"Loaded:")
             print(f"  - {len(betting_df)} betting results")
             print(f"  - {len(predictions_df)} predictions")
