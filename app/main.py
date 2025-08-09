@@ -99,10 +99,6 @@ class BettingPipeline:
         self._display_prediction_summary(zsd_df, betting_candidates)
         return True
 
-    def _display_betting_candidates(self, betting_candidates):
-        """Display betting candidates in a formatted way."""
-        # Refactored main.py with improved organization and consolidation
-
     def _validate_mode(self, mode: str) -> bool:
         """Validate mode and show any issues."""
         is_valid, errors, warnings = self.validator.validate_mode(mode)
@@ -259,9 +255,9 @@ class BettingPipeline:
             return False
 
     def _display_betting_candidates(self, betting_candidates):
-        """Display betting candidates in a formatted way."""
+        """Display betting candidates in a formatted way with enhanced information."""
         print(f"\nFound {len(betting_candidates)} enhanced ZSD betting candidates:")
-        print("-" * 80)
+        print("-" * 100)
 
         # Sort by edge (highest first)
         betting_candidates = betting_candidates.sort_values("Edge", ascending=False)
@@ -273,14 +269,51 @@ class BettingPipeline:
         for idx, candidate in betting_candidates.head(max_display).iterrows():
             print(f"{candidate['Home']} vs {candidate['Away']} ({candidate['League']})")
             print(f"  Date: {candidate['Date']}")
+            odds = candidate.get("Odds", None)
+            edge = candidate.get("Edge", 0)
+
+            try:
+                odds_str = f"{float(odds):.2f}"
+            except (ValueError, TypeError):
+                odds_str = "N/A"
+
             print(
                 f"  Recommended Bet: {candidate.get('Bet_Type', 'N/A')} at "
-                f"{candidate.get('Odds', 'N/A')} (Edge: {candidate.get('Edge', 0):.3f})"
+                f"{odds_str} (Edge: {float(edge):.3f})"
+            )
+
+            # Display all prediction methods
+            print(f"  Model Predictions:")
+            print(
+                f"    Poisson:  H={candidate.get('Poisson_Prob_H', 0):.3f}, D={candidate.get('Poisson_Prob_D', 0):.3f}, A={candidate.get('Poisson_Prob_A', 0):.3f}"
             )
             print(
-                f"  ZSD Probabilities: H={candidate['ZSD_Prob_H']:.3f}, "
-                f"D={candidate['ZSD_Prob_D']:.3f}, A={candidate['ZSD_Prob_A']:.3f}"
+                f"    ZIP:      H={candidate.get('ZIP_Prob_H', 0):.3f}, D={candidate.get('ZIP_Prob_D', 0):.3f}, A={candidate.get('ZIP_Prob_A', 0):.3f}"
             )
+            print(
+                f"    MOV:      H={candidate.get('MOV_Prob_H', 0):.3f}, D={candidate.get('MOV_Prob_D', 0):.3f}, A={candidate.get('MOV_Prob_A', 0):.3f}"
+            )
+
+            # Display combined probabilities and odds
+            print(f"  Market Analysis:")
+            print(
+                f"    No-Vig Probs: H={candidate.get('NoVig_Prob_H', 0):.3f}, D={candidate.get('NoVig_Prob_D', 0):.3f}, A={candidate.get('NoVig_Prob_A', 0):.3f}"
+            )
+            print(
+                f"    Model Avg:    H={candidate.get('ModelAvg_Prob_H', 0):.3f}, D={candidate.get('ModelAvg_Prob_D', 0):.3f}, A={candidate.get('ModelAvg_Prob_A', 0):.3f}"
+            )
+            print(
+                f"    Weighted:     H={candidate.get('Weighted_Prob_H', 0):.3f}, D={candidate.get('Weighted_Prob_D', 0):.3f}, A={candidate.get('Weighted_Prob_A', 0):.3f}"
+            )
+
+            # Display fair odds
+            print(
+                f"  Fair Odds:    H={candidate.get('Fair_Odds_H', 0):.2f}, D={candidate.get('Fair_Odds_D', 0):.2f}, A={candidate.get('Fair_Odds_A', 0):.2f}"
+            )
+            print(
+                f"  Market Odds:  H={candidate.get('PSH', 0):.2f}, D={candidate.get('PSD', 0):.2f}, A={candidate.get('PSA', 0):.2f}"
+            )
+
             if "PPI_Diff" in candidate:
                 print(f"  PPI_Diff: {candidate['PPI_Diff']:.3f}")
             print()
@@ -296,15 +329,21 @@ class BettingPipeline:
 
         if len(betting_candidates) > 0:
             avg_edge = betting_candidates["Edge"].mean()
+            max_edge = betting_candidates["Edge"].max()
             print(f"Average edge: {avg_edge:.3f}")
+            print(f"Maximum edge: {max_edge:.3f}")
+
+            # Show distribution of bet types
+            bet_type_dist = betting_candidates["Bet_Type"].value_counts()
+            print(f"Bet type distribution: {bet_type_dist.to_dict()}")
 
         # Show distribution by league
         league_summary = (
             zsd_df.groupby("League")
-            .agg({"Is_Betting_Candidate": "sum", "ZSD_Prob_H": "count"})
+            .agg({"Is_Betting_Candidate": "sum", "ZIP_Prob_H": "count"})
             .rename(
                 columns={
-                    "ZSD_Prob_H": "Total_Matches",
+                    "ZIP_Prob_H": "Total_Matches",
                     "Is_Betting_Candidate": "Betting_Candidates",
                 }
             )
@@ -333,14 +372,30 @@ class BettingPipeline:
 
                 if method == "Enhanced ZSD":
                     n_candidates = len(df[df["Is_Betting_Candidate"] == True])
+                    # Also show prediction method breakdown if enhanced
+                    if len(df) > 0 and "Poisson_Prob_H" in df.columns:
+                        avg_poisson_home = df["Poisson_Prob_H"].mean()
+                        avg_zip_home = df["ZIP_Prob_H"].mean()
+                        avg_mov_home = df.get("MOV_Prob_H", pd.Series([0])).mean()
+                        comparison_summary[method] = {
+                            "total_predictions": len(df),
+                            "betting_candidates": n_candidates,
+                            "avg_poisson_home": avg_poisson_home,
+                            "avg_zip_home": avg_zip_home,
+                            "avg_mov_home": avg_mov_home,
+                        }
+                    else:
+                        comparison_summary[method] = {
+                            "total_predictions": len(df),
+                            "betting_candidates": n_candidates,
+                        }
                 else:
                     # Assume all are candidates for PPI/basic ZSD
                     n_candidates = len(df)
-
-                comparison_summary[method] = {
-                    "total_predictions": len(df),
-                    "betting_candidates": n_candidates,
-                }
+                    comparison_summary[method] = {
+                        "total_predictions": len(df),
+                        "betting_candidates": n_candidates,
+                    }
 
             except FileNotFoundError:
                 comparison_summary[method] = {
@@ -354,6 +409,10 @@ class BettingPipeline:
                 f"  {method}: {stats['total_predictions']} predictions, "
                 f"{stats['betting_candidates']} candidates"
             )
+            if "avg_poisson_home" in stats:
+                print(
+                    f"    Avg Home Win Probs - Poisson: {stats['avg_poisson_home']:.3f}, ZIP: {stats['avg_zip_home']:.3f}, MOV: {stats['avg_mov_home']:.3f}"
+                )
 
         return comparison_summary
 
