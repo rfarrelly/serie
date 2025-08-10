@@ -110,7 +110,7 @@ def merge_historical_odds_data():
         )
 
         # Identify unmerged rows
-        unmerged_rows = merged_df[merged_df["PSCH"].isna()]
+        unmerged_rows = merged_df[merged_df["PSH"].isna()]
 
         if len(unmerged_rows) > 0:
             print(f"{unmerged_rows.shape[0]} unmerged historical odds rows:")

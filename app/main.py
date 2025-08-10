@@ -88,12 +88,12 @@ class BettingPipeline:
         # Extract betting candidates
         betting_candidates = zsd_df[zsd_df["Is_Betting_Candidate"] == True]
 
-        if len(betting_candidates) > 0:
-            self._display_betting_candidates(betting_candidates)
-            betting_candidates.to_csv("zsd_betting_candidates.csv", index=False)
-            print(f"Saved {len(betting_candidates)} betting candidates")
-        else:
-            print("No enhanced ZSD betting candidates found with current thresholds")
+        # if len(betting_candidates) > 0:
+        self._display_betting_candidates(betting_candidates)
+        betting_candidates.to_csv("zsd_betting_candidates.csv", index=False)
+        print(f"Saved {len(betting_candidates)} betting candidates")
+        # else:
+        #     print("No enhanced ZSD betting candidates found with current thresholds")
 
         # Display summary
         self._display_prediction_summary(zsd_df, betting_candidates)
