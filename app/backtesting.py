@@ -524,9 +524,9 @@ class ImprovedBacktester:
 
             # Calculate fair probabilities from odds
             odds = [
-                match_row.get("PSCH", np.nan),
-                match_row.get("PSCD", np.nan),
-                match_row.get("PSCA", np.nan),
+                match_row.get("PSH", np.nan),
+                match_row.get("PSD", np.nan),
+                match_row.get("PSA", np.nan),
             ]
 
             fair_probs = self._calculate_fair_probabilities(odds)
@@ -561,9 +561,9 @@ class ImprovedBacktester:
                 "Lambda_Away": prediction.lambda_away,
                 "MOV_Prediction": prediction.mov_prediction,
                 "MOV_StdError": prediction.mov_std_error,
-                "PSCH": odds[0],
-                "PSCD": odds[1],
-                "PSCA": odds[2],
+                "PSH": odds[0],
+                "PSD": odds[1],
+                "PSA": odds[2],
                 **ppi_features,
             }
 
@@ -722,7 +722,7 @@ class ImprovedBacktester:
             ]
         )
 
-        odds = np.array([prediction["PSCH"], prediction["PSCD"], prediction["PSCA"]])
+        odds = np.array([prediction["PSH"], prediction["PSD"], prediction["PSA"]])
 
         # Skip if any probabilities are NaN
         if (
@@ -944,7 +944,7 @@ class ImprovedBacktester:
             fair_probs_row = np.array(
                 [row["Fair_Prob_H"], row["Fair_Prob_D"], row["Fair_Prob_A"]]
             )
-            odds = np.array([row["PSCH"], row["PSCD"], row["PSCA"]])
+            odds = np.array([row["PSH"], row["PSD"], row["PSA"]])
 
             if not (
                 np.any(np.isnan(model_probs))
