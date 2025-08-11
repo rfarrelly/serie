@@ -492,9 +492,7 @@ class ZSDIntegratedProcessor:
         if len(predictions_df) == 0:
             return []
 
-        betting_candidates = self.zsd_manager.get_betting_candidates(
-            predictions_df, edge_threshold=0.015, max_candidates=50
-        )
+        betting_candidates = self.zsd_manager.get_betting_candidates(predictions_df)
 
         print(f"Generated {len(predictions_df)} ZSD predictions")
         print(f"Found {len(betting_candidates)} betting candidates")

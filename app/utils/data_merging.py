@@ -117,9 +117,7 @@ def merge_historical_odds_data():
             print(unmerged_rows[["Date", "Home", "Away"]].head(10))
 
         print(f"Merged historical odds size: {merged_df.shape[0]}")
-        print(
-            f"{merged_df[merged_df['PSCH'].isna()].shape[0]} unmerged historical odds"
-        )
+        print(f"{merged_df[merged_df['PSH'].isna()].shape[0]} unmerged historical odds")
 
         # Save merged data
         merged_df.to_csv("historical_ppi_and_odds.csv", index=False)

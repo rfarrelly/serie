@@ -104,7 +104,20 @@ class DataIngestion:
 
     def get_fbduk_data(self, league: Leagues, season: str):
         league_name = league.fbref_name
-        odds_columns = ["PSH", "PSD", "PSA", "B365CH", "B365CD", "B365CA"]
+        odds_columns = [
+            "PSH",
+            "PSD",
+            "PSA",
+            "PSCH",
+            "PSCD",
+            "PSCA",
+            "B365H",
+            "B365D",
+            "B365A",
+            "B365CH",
+            "B365CD",
+            "B365CA",
+        ]
 
         if league.is_extra:
             url = fbduk_extra_url_builder(self.config.fbduk_base_url_extra, league)
@@ -121,6 +134,9 @@ class DataIngestion:
         data_df = pd.read_csv(url, encoding="latin-1")[columns].rename(
             columns={"HomeTeam": "Home", "AwayTeam": "Away"}
         )
+
+        # Fill empty closing odds with pre-closing odds and visa-versa
+        data_df = self._fill_empty_odds(data_df)
 
         if "Season" in data_df.columns:
             data_df = data_df[data_df["Season"] == season_extra_format]
@@ -144,3 +160,24 @@ class DataIngestion:
 
         # Keep rows until the first non-matching one
         return df[df["Round"] == first_value]
+
+    @staticmethod
+    def _fill_empty_odds(df: pd.DataFrame):
+        df = df.copy()
+
+        pinny_pairs = [("PSH", "PSCH"), ("PSD", "PSCD"), ("PSA", "PSCA")]
+        b365_pairs = [("B365H", "B365CH"), ("B365D", "B365CD"), ("B365A", "B365CA")]
+
+        for col1, col2 in pinny_pairs:
+            # Fill col1 from col2 where col1 is NaN
+            df[col1] = df[col1].fillna(df[col2])
+            # Fill col2 from col1 where col2 is NaN
+            df[col2] = df[col2].fillna(df[col1])
+
+        for col1, col2 in b365_pairs:
+            # Fill col1 from col2 where col1 is NaN
+            df[col1] = df[col1].fillna(df[col2])
+            # Fill col2 from col1 where col2 is NaN
+            df[col2] = df[col2].fillna(df[col1])
+
+        return df
