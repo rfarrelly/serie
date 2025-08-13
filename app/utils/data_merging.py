@@ -134,7 +134,25 @@ def load_future_odds_data():
         # Main fixtures
         fbduk_main_odds = pd.read_csv("fixtures.csv").rename(
             {"HomeTeam": "Home", "AwayTeam": "Away"}, axis="columns"
-        )[["Date", "Home", "Away", "PSH", "PSD", "PSA"]]
+        )[
+            [
+                "Date",
+                "Home",
+                "Away",
+                "PSH",
+                "PSD",
+                "PSA",
+                "PSCH",
+                "PSCD",
+                "PSCA",
+                "B365H",
+                "B365D",
+                "B365A",
+                "B365CH",
+                "B365CD",
+                "B365CA",
+            ]
+        ]
 
         # Optionally load additional fixtures
         additional_fixtures = []
@@ -152,10 +170,7 @@ def load_future_odds_data():
         else:
             fbduk_odds_data = fbduk_main_odds
 
-        # Format dates
-        fbduk_odds_data = format_date(fbduk_odds_data)
-
-        return fbduk_odds_data
+        return format_date(fbduk_odds_data)
 
     except FileNotFoundError as e:
         print(f"Error loading future odds data: {e}")
@@ -211,6 +226,15 @@ def merge_future_odds_data():
             "PSH",
             "PSD",
             "PSA",
+            "PSCH",
+            "PSCD",
+            "PSCA",
+            "B365H",
+            "B365D",
+            "B365A",
+            "B365CH",
+            "B365CD",
+            "B365CA",
         ]
 
         # Only keep columns that exist
