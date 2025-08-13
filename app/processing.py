@@ -44,6 +44,10 @@ class LeagueProcessor:
     def get_points_performance_index(self) -> dict:
         fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
 
+        if fixtures.empty:
+            print("No Fixtures for this date range")
+            return None
+
         home_ppg, away_ppg, total_ppg = compute_ppg(self.played_matches_df)
 
         candidates = []

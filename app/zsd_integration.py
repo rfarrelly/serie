@@ -284,7 +284,24 @@ class ZSDModelManager:
         )
 
         # Add additional columns from fixture
-        for col in ["Wk", "PSH", "PSD", "PSA", "PPI_Diff", "hPPI", "aPPI"]:
+        for col in [
+            "Wk",
+            "PSH",
+            "PSD",
+            "PSA",
+            "PSCH",
+            "PSCD",
+            "PSCA",
+            "B365H",
+            "B365D",
+            "B365A",
+            "B365CH",
+            "B365CD",
+            "B365CA",
+            "PPI_Diff",
+            "hPPI",
+            "aPPI",
+        ]:
             if col in match.index:
                 pred_dict[col] = match[col]
 
@@ -316,7 +333,8 @@ class ZSDModelManager:
 
     def _calculate_betting_metrics(self, pred) -> Optional[Dict]:
         """Calculate all betting metrics for a single prediction."""
-        market_odds = [pred["PSH"], pred["PSD"], pred["PSA"]]
+        sharp_odds = [pred["PSH"], pred["PSD"], pred["PSA"]]
+        soft_odds = [pred["B365H"], pred["B365D"], pred["B365A"]]
 
         # Get model probabilities
         prob_sets = {
@@ -330,17 +348,17 @@ class ZSDModelManager:
         }
 
         # Calculate no-vig and model averages
-        no_vig_odds = get_no_vig_odds_multiway(market_odds)
-        no_vig_probs = [1 / odd for odd in no_vig_odds]
+        no_vig_sharp_odds = get_no_vig_odds_multiway(sharp_odds)
+        no_vig_sharp_probs = [1 / odd for odd in no_vig_sharp_odds]
         model_avg_probs = [
             (sum(prob_sets[m][i] for m in prob_sets) / 3) for i in range(3)
         ]
         weighted_probs = [
-            model_avg_probs[i] * 0.1 + no_vig_probs[i] * 0.9 for i in range(3)
+            model_avg_probs[i] * 0.1 + no_vig_sharp_probs[i] * 0.9 for i in range(3)
         ]
 
         # Calculate edges
-        edges = self._calculate_all_edges(weighted_probs, no_vig_probs, market_odds)
+        edges = self._calculate_all_edges(weighted_probs, soft_odds)
         max_edge = max(edges["expected_values"])
         bet_idx = edges["expected_values"].index(max_edge)
 
@@ -349,30 +367,29 @@ class ZSDModelManager:
         candidate.update(
             self._build_betting_dict(
                 edges,
-                no_vig_odds,
-                no_vig_probs,
+                no_vig_sharp_odds,
+                no_vig_sharp_probs,
                 model_avg_probs,
                 weighted_probs,
-                market_odds,
+                sharp_odds,
+                soft_odds,
                 bet_idx,
             )
         )
 
         return candidate
 
-    def _calculate_all_edges(self, weighted_probs, no_vig_probs, market_odds) -> Dict:
+    def _calculate_all_edges(self, weighted_probs, soft_odds) -> Dict:
         """Calculate all types of edges."""
         return {
-            "probability_edges": [
-                weighted_probs[i] - no_vig_probs[i] for i in range(3)
-            ],
+            "probability_edges": [weighted_probs[i] - soft_odds[i] for i in range(3)],
             "expected_values": [
-                (weighted_probs[i] * market_odds[i]) - 1 for i in range(3)
+                (weighted_probs[i] * soft_odds[i]) - 1 for i in range(3)
             ],
             "kelly_edges": [
                 (
-                    (weighted_probs[i] * market_odds[i] - 1) / (market_odds[i] - 1)
-                    if market_odds[i] > 1
+                    (weighted_probs[i] * soft_odds[i] - 1) / (soft_odds[i] - 1)
+                    if soft_odds[i] > 1
                     else 0
                 )
                 for i in range(3)
@@ -387,6 +404,7 @@ class ZSDModelManager:
         model_avg_probs,
         weighted_probs,
         market_odds,
+        soft_odds,
         bet_idx,
     ) -> Dict:
         """Build the betting metrics dictionary."""
@@ -425,6 +443,7 @@ class ZSDModelManager:
             "Model_Prob": weighted_probs[bet_idx],
             "Market_Prob": no_vig_probs[bet_idx],
             "Market_Odds": market_odds[bet_idx],
+            "Soft_Odds": soft_odds[bet_idx],
             "Fair_Odds_Selected": fair_odds[bet_idx],
         }
 
