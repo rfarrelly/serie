@@ -483,7 +483,7 @@ class ZSDIntegratedProcessor:
         """Optimize parameters for all leagues with sufficient data."""
         print("Starting parameter optimization for all leagues...")
 
-        for league in ["Belgian-Pro-League"]:  # historical_data["League"].unique()
+        for league in historical_data["League"].unique():
             league_data = historical_data[historical_data["League"] == league]
 
             if len(league_data) > 179 and self.should_reoptimize_parameters(league):
@@ -499,7 +499,7 @@ class ZSDIntegratedProcessor:
         """Fit ZSD models for all leagues."""
         print("Fitting ZSD models for all leagues...")
 
-        for league in ["Belgian-Pro-League"]:  # historical_data["League"].unique()
+        for league in historical_data["League"].unique():
             self.zsd_manager.fit_league_model(historical_data, league)
 
     def get_zsd_predictions(self, fixtures_df: pd.DataFrame) -> List[Dict]:
