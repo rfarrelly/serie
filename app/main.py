@@ -39,6 +39,7 @@ class BettingPipeline:
     def _initialize_zsd(self):
         """Initialize ZSD processor if not already done."""
         if self.zsd_processor is None:
+            print("Initializing ZSD processor...")
             self.zsd_processor = setup_zsd_integration(self.pipeline_config.base_config)
         return self.zsd_processor
 
@@ -53,7 +54,15 @@ class BettingPipeline:
 
         try:
             # Load fixtures data
-            fixtures_with_odds = pd.read_csv("fixtures_ppi_and_odds.csv")
+            fixtures_file = "fixtures_ppi_and_odds.csv"
+            if not Path(fixtures_file).exists():
+                print(
+                    f"Error: {fixtures_file} not found. Please run 'latest_ppi' first."
+                )
+                return False
+
+            fixtures_with_odds = pd.read_csv(fixtures_file)
+            print(f"Loaded {len(fixtures_with_odds)} fixtures")
 
             # Initialize ZSD processor and fit models
             zsd_processor = self._initialize_zsd()
@@ -73,6 +82,9 @@ class BettingPipeline:
             # Process and save predictions
             return self._process_zsd_results(zsd_predictions)
 
+        except FileNotFoundError as e:
+            print(f"Required file not found: {e}")
+            return False
         except Exception as e:
             print(f"Error in ZSD predictions: {e}")
             import traceback
@@ -83,17 +95,23 @@ class BettingPipeline:
     def _process_zsd_results(self, zsd_predictions) -> bool:
         """Process and save ZSD prediction results."""
         zsd_df = pd.DataFrame(zsd_predictions)
-        zsd_df.to_csv("latest_zsd_enhanced.csv", index=False)
+
+        # Save all predictions
+        output_file = "latest_zsd_enhanced.csv"
+        zsd_df.to_csv(output_file, index=False)
+        print(f"Saved {len(zsd_df)} predictions to {output_file}")
 
         # Extract betting candidates
         betting_candidates = zsd_df[zsd_df["Is_Betting_Candidate"] == True]
 
-        # if len(betting_candidates) > 0:
+        # Always display and save candidates (even if empty)
         self._display_betting_candidates(betting_candidates)
-        betting_candidates.to_csv("zsd_betting_candidates.csv", index=False)
-        print(f"Saved {len(betting_candidates)} betting candidates")
-        # else:
-        #     print("No enhanced ZSD betting candidates found with current thresholds")
+
+        candidates_file = "zsd_betting_candidates.csv"
+        betting_candidates.to_csv(candidates_file, index=False)
+        print(
+            f"Saved {len(betting_candidates)} betting candidates to {candidates_file}"
+        )
 
         # Display summary
         self._display_prediction_summary(zsd_df, betting_candidates)
@@ -128,11 +146,23 @@ class BettingPipeline:
         print("=" * 60)
 
         try:
+            # Check if historical data exists
+            historical_file = "historical_ppi_and_odds.csv"
+            if not Path(historical_file).exists():
+                print(
+                    f"Error: {historical_file} not found. Please run 'historical_ppi' first."
+                )
+                return False
+
             zsd_processor = self._initialize_zsd()
             periodic_parameter_optimization(zsd_processor)
             print("Parameter optimization completed successfully")
             return True
 
+        except FileNotFoundError as e:
+            print(f"Required file not found: {e}")
+            print("Please run 'historical_ppi' mode first to generate historical data.")
+            return False
         except Exception as e:
             print(f"Error in parameter optimization: {e}")
             import traceback
@@ -143,6 +173,10 @@ class BettingPipeline:
     def run_get_data(self, season: str) -> bool:
         """Download data for all leagues for a specific season."""
         print(f"Downloading data for season: {season}")
+
+        if not season or len(season.split("-")) != 2:
+            print("Error: Please provide a valid season format (e.g., '2023-24')")
+            return False
 
         config = AppConfig(season)
         failed_leagues = []
@@ -191,6 +225,9 @@ class BettingPipeline:
                 ppi = processor.get_points_performance_index()
                 if ppi:
                     ppi_all_leagues.extend(ppi)
+                    print(f"  Generated {len(ppi)} PPI records for {league.name}")
+                else:
+                    print(f"  No PPI data for {league.name}")
             except Exception as e:
                 print(f"Error getting latest PPI for {processor.league_name}: {e}")
                 failed_leagues.append(league.name)
@@ -207,11 +244,12 @@ class BettingPipeline:
 
         ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
         ppi_latest.to_csv("latest_ppi.csv", index=False)
+        print(f"Saved {len(ppi_latest)} PPI records to latest_ppi.csv")
 
         # Merge with odds data
         try:
             merge_future_odds_data()
-            print(f"Successfully generated {len(ppi_latest)} PPI predictions")
+            print(f"Successfully merged PPI data with odds")
         except Exception as e:
             print(f"Error merging with odds data: {e}")
             return False
@@ -239,12 +277,11 @@ class BettingPipeline:
             ]
 
             historical_ppi.to_csv("historical_ppi.csv", index=False)
+            print(f"Saved {len(historical_ppi)} historical PPI records")
 
             # Merge with odds data
             merge_historical_odds_data()
-            print(
-                f"Successfully generated {len(historical_ppi)} historical PPI records"
-            )
+            print(f"Successfully merged historical PPI data with odds")
             return True
 
         except Exception as e:
@@ -256,6 +293,10 @@ class BettingPipeline:
 
     def _display_betting_candidates(self, betting_candidates):
         """Display betting candidates in a formatted way with enhanced information."""
+        if len(betting_candidates) == 0:
+            print("No ZSD betting candidates found with current thresholds")
+            return
+
         print(f"\nFound {len(betting_candidates)} enhanced ZSD betting candidates:")
         print("-" * 100)
 
@@ -269,49 +310,42 @@ class BettingPipeline:
         for idx, candidate in betting_candidates.head(max_display).iterrows():
             print(f"{candidate['Home']} vs {candidate['Away']} ({candidate['League']})")
             print(f"  Date: {candidate['Date']}")
-            odds = candidate.get("Odds", None)
-            edge = candidate.get("Edge", 0)
 
-            try:
-                odds_str = f"{float(odds):.2f}"
-            except (ValueError, TypeError):
-                odds_str = "N/A"
+            bet_type = candidate.get("Bet_Type", "N/A")
+            edge = candidate.get("Edge", 0)
+            soft_odds = candidate.get("Soft_Odds", 0)
 
             print(
-                f"  Recommended Bet: {candidate.get('Bet_Type', 'N/A')} at "
-                f"{odds_str} (Edge: {float(edge):.3f})"
+                f"  Recommended Bet: {bet_type} at {soft_odds:.2f} (Edge: {edge:.3f})"
             )
 
             # Display all prediction methods
             print(f"  Model Predictions:")
             print(
-                f"    Poisson:  H={candidate.get('Poisson_Prob_H', 0):.3f}, D={candidate.get('Poisson_Prob_D', 0):.3f}, A={candidate.get('Poisson_Prob_A', 0):.3f}"
+                f"    Poisson:  H={candidate.get('Poisson_Prob_H', 0):.3f}, "
+                f"D={candidate.get('Poisson_Prob_D', 0):.3f}, "
+                f"A={candidate.get('Poisson_Prob_A', 0):.3f}"
             )
             print(
-                f"    ZIP:      H={candidate.get('ZIP_Prob_H', 0):.3f}, D={candidate.get('ZIP_Prob_D', 0):.3f}, A={candidate.get('ZIP_Prob_A', 0):.3f}"
+                f"    ZIP:      H={candidate.get('ZIP_Prob_H', 0):.3f}, "
+                f"D={candidate.get('ZIP_Prob_D', 0):.3f}, "
+                f"A={candidate.get('ZIP_Prob_A', 0):.3f}"
             )
             print(
-                f"    MOV:      H={candidate.get('MOV_Prob_H', 0):.3f}, D={candidate.get('MOV_Prob_D', 0):.3f}, A={candidate.get('MOV_Prob_A', 0):.3f}"
+                f"    MOV:      H={candidate.get('MOV_Prob_H', 0):.3f}, "
+                f"D={candidate.get('MOV_Prob_D', 0):.3f}, "
+                f"A={candidate.get('MOV_Prob_A', 0):.3f}"
             )
 
-            # Display combined probabilities and odds
+            # Display market analysis
             print(f"  Market Analysis:")
             print(
-                f"    No-Vig Probs: H={candidate.get('NoVig_Prob_H', 0):.3f}, D={candidate.get('NoVig_Prob_D', 0):.3f}, A={candidate.get('NoVig_Prob_A', 0):.3f}"
+                f"    Model Prob: {candidate.get('Model_Prob', 0):.3f}, "
+                f"Market Prob: {candidate.get('Market_Prob', 0):.3f}"
             )
             print(
-                f"    Model Avg:    H={candidate.get('ModelAvg_Prob_H', 0):.3f}, D={candidate.get('ModelAvg_Prob_D', 0):.3f}, A={candidate.get('ModelAvg_Prob_A', 0):.3f}"
-            )
-            print(
-                f"    Weighted:     H={candidate.get('Weighted_Prob_H', 0):.3f}, D={candidate.get('Weighted_Prob_D', 0):.3f}, A={candidate.get('Weighted_Prob_A', 0):.3f}"
-            )
-
-            # Display fair odds
-            print(
-                f"  Fair Odds:    H={candidate.get('Fair_Odds_H', 0):.2f}, D={candidate.get('Fair_Odds_D', 0):.2f}, A={candidate.get('Fair_Odds_A', 0):.2f}"
-            )
-            print(
-                f"  Market Odds:  H={candidate.get('PSH', 0):.2f}, D={candidate.get('PSD', 0):.2f}, A={candidate.get('PSA', 0):.2f}"
+                f"    Fair Odds: {candidate.get('Fair_Odds_Selected', 0):.2f}, "
+                f"Market Odds: {candidate.get('Market_Odds', 0):.2f}"
             )
 
             if "PPI_Diff" in candidate:
@@ -338,19 +372,20 @@ class BettingPipeline:
             print(f"Bet type distribution: {bet_type_dist.to_dict()}")
 
         # Show distribution by league
-        league_summary = (
-            zsd_df.groupby("League")
-            .agg({"Is_Betting_Candidate": "sum", "ZIP_Prob_H": "count"})
-            .rename(
-                columns={
-                    "ZIP_Prob_H": "Total_Matches",
-                    "Is_Betting_Candidate": "Betting_Candidates",
-                }
+        if len(zsd_df) > 0:
+            league_summary = (
+                zsd_df.groupby("League")
+                .agg({"Is_Betting_Candidate": "sum", "ZIP_Prob_H": "count"})
+                .rename(
+                    columns={
+                        "ZIP_Prob_H": "Total_Matches",
+                        "Is_Betting_Candidate": "Betting_Candidates",
+                    }
+                )
             )
-        )
 
-        print(f"\nBy League:")
-        print(league_summary)
+            print(f"\nBy League:")
+            print(league_summary)
 
     def compare_prediction_methods(self):
         """Compare different prediction methods."""
@@ -368,11 +403,22 @@ class BettingPipeline:
 
         for method, filename in files_to_compare.items():
             try:
+                if not Path(filename).exists():
+                    print(f"Warning: {filename} not found")
+                    comparison_summary[method] = {
+                        "total_predictions": 0,
+                        "betting_candidates": 0,
+                        "status": "File not found",
+                    }
+                    continue
+
                 df = pd.read_csv(filename)
 
                 if method == "Enhanced ZSD":
-                    n_candidates = len(df[df["Is_Betting_Candidate"] == True])
-                    # Also show prediction method breakdown if enhanced
+                    n_candidates = len(
+                        df[df.get("Is_Betting_Candidate", False) == True]
+                    )
+                    # Show prediction method breakdown if enhanced
                     if len(df) > 0 and "Poisson_Prob_H" in df.columns:
                         avg_poisson_home = df["Poisson_Prob_H"].mean()
                         avg_zip_home = df["ZIP_Prob_H"].mean()
@@ -383,11 +429,13 @@ class BettingPipeline:
                             "avg_poisson_home": avg_poisson_home,
                             "avg_zip_home": avg_zip_home,
                             "avg_mov_home": avg_mov_home,
+                            "status": "Success",
                         }
                     else:
                         comparison_summary[method] = {
                             "total_predictions": len(df),
                             "betting_candidates": n_candidates,
+                            "status": "Success",
                         }
                 else:
                     # Assume all are candidates for PPI/basic ZSD
@@ -395,66 +443,92 @@ class BettingPipeline:
                     comparison_summary[method] = {
                         "total_predictions": len(df),
                         "betting_candidates": n_candidates,
+                        "status": "Success",
                     }
 
-            except FileNotFoundError:
+            except Exception as e:
+                print(f"Error reading {filename}: {e}")
                 comparison_summary[method] = {
                     "total_predictions": 0,
                     "betting_candidates": 0,
+                    "status": f"Error: {e}",
                 }
 
         print("Method Comparison:")
         for method, stats in comparison_summary.items():
-            print(
-                f"  {method}: {stats['total_predictions']} predictions, "
-                f"{stats['betting_candidates']} candidates"
-            )
-            if "avg_poisson_home" in stats:
+            status = stats.get("status", "Success")
+            if status == "Success":
                 print(
-                    f"    Avg Home Win Probs - Poisson: {stats['avg_poisson_home']:.3f}, ZIP: {stats['avg_zip_home']:.3f}, MOV: {stats['avg_mov_home']:.3f}"
+                    f"  {method}: {stats['total_predictions']} predictions, "
+                    f"{stats['betting_candidates']} candidates"
                 )
+                if "avg_poisson_home" in stats:
+                    print(
+                        f"    Avg Home Win Probs - Poisson: {stats['avg_poisson_home']:.3f}, "
+                        f"ZIP: {stats['avg_zip_home']:.3f}, MOV: {stats['avg_mov_home']:.3f}"
+                    )
+            else:
+                print(f"  {method}: {status}")
 
         return comparison_summary
 
     def run_backtest_validation(self, betting_csv, predictions_csv):
+        """Run comprehensive backtest validation."""
         print("Running comprehensive backtest validation...")
-        # 1. Main validation
-        validation_result = validate_zsd_backtest_results(
-            betting_csv, predictions_csv, self.pipeline_config
-        )
 
-        if validation_result:
-            print(f"\nValidation complete!")
-            print(f"Valid: {validation_result.is_valid}")
-            print(f"Confidence: {validation_result.confidence_score:.2f}")
+        # Check if files exist
+        if not Path(betting_csv).exists():
+            print(f"Error: Betting results file not found: {betting_csv}")
+            return False
 
-        # 2. Manual inspection helper
+        if not Path(predictions_csv).exists():
+            print(f"Error: Predictions file not found: {predictions_csv}")
+            return False
+
         try:
+            # 1. Main validation
+            validation_result = validate_zsd_backtest_results(
+                betting_csv, predictions_csv, self.pipeline_config
+            )
+
+            if validation_result:
+                print(f"\nValidation complete!")
+                print(f"Valid: {validation_result.is_valid}")
+                print(f"Confidence: {validation_result.confidence_score:.2f}")
+
+            # 2. Manual inspection helper
             print(f"\nCreating manual inspection helper...")
             manual_bet_inspection_helper(betting_csv, n_samples=50)
-        except FileNotFoundError:
-            print("Betting results file not found - run backtest first")
 
-        # 3. Additional validation checks
-        print(f"\n" + "=" * 60)
-        print("ADDITIONAL VALIDATION CHECKS")
-        print("=" * 60)
+            # 3. Additional validation checks
+            print(f"\n" + "=" * 60)
+            print("ADDITIONAL VALIDATION CHECKS")
+            print("=" * 60)
 
-        # Market efficiency check
-        analyze_market_efficiency_violations(betting_csv)
+            # Market efficiency check
+            analyze_market_efficiency_violations(betting_csv)
 
-        # Random betting benchmark
-        benchmark_against_random_betting(betting_csv)
+            # Random betting benchmark
+            benchmark_against_random_betting(betting_csv)
 
-        # Cross-validation note
-        print(f"\n" + "=" * 60)
-        print("RECOMMENDED ADDITIONAL CHECKS")
-        print("=" * 60)
-        print("1. Run backtest on different time periods")
-        print("2. Test on different leagues separately")
-        print("3. Use walk-forward validation")
-        print("4. Check results against betting exchange data")
-        print("5. Paper trade for a few weeks before going live")
+            # Cross-validation note
+            print(f"\n" + "=" * 60)
+            print("RECOMMENDED ADDITIONAL CHECKS")
+            print("=" * 60)
+            print("1. Run backtest on different time periods")
+            print("2. Test on different leagues separately")
+            print("3. Use walk-forward validation")
+            print("4. Check results against betting exchange data")
+            print("5. Paper trade for a few weeks before going live")
+
+            return True
+
+        except Exception as e:
+            print(f"Error in backtest validation: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return False
 
     def run_full_pipeline(self) -> bool:
         """Run the complete betting pipeline."""
@@ -477,11 +551,11 @@ class BettingPipeline:
             print("Parameter optimization needed - running now...")
             if self.run_parameter_optimization():
                 success_steps += 1
-                print("✓ Parameter optimization completed")
+                print("✅ Parameter optimization completed")
             else:
-                print("✗ Parameter optimization failed, continuing with defaults")
+                print("❌ Parameter optimization failed, continuing with defaults")
         else:
-            print("✓ Parameter optimization not needed (configs are recent)")
+            print("✅ Parameter optimization not needed (configs are recent)")
             success_steps += 1
 
         # Step 2: Generate latest PPI predictions
@@ -491,9 +565,9 @@ class BettingPipeline:
 
         if self.run_latest_ppi():
             success_steps += 1
-            print("✓ Latest PPI predictions completed")
+            print("✅ Latest PPI predictions completed")
         else:
-            print("✗ Latest PPI predictions failed")
+            print("❌ Latest PPI predictions failed")
             return False  # Can't continue without PPI data
 
         # Step 3: Run ZSD predictions
@@ -503,9 +577,9 @@ class BettingPipeline:
 
         if self.run_zsd_predictions():
             success_steps += 1
-            print("✓ ZSD predictions completed")
+            print("✅ ZSD predictions completed")
         else:
-            print("✗ ZSD predictions failed")
+            print("❌ ZSD predictions failed")
 
         # Step 4: Compare methods
         print("\n" + "=" * 60)
@@ -515,9 +589,9 @@ class BettingPipeline:
         try:
             self.compare_prediction_methods()
             success_steps += 1
-            print("✓ Method comparison completed")
+            print("✅ Method comparison completed")
         except Exception as e:
-            print(f"✗ Method comparison failed: {e}")
+            print(f"❌ Method comparison failed: {e}")
 
         # Step 5: Final summary
         print("\n" + "=" * 60)
@@ -580,14 +654,17 @@ def main():
             pipeline.run_parameter_optimization()
 
         elif mode == "validate":
-            if len(sys.argv) > 2:
+            if len(sys.argv) > 3:
                 betting_filename = sys.argv[2]
                 prediction_filename = sys.argv[3]
                 pipeline.run_backtest_validation(betting_filename, prediction_filename)
             else:
-                print("Usage: uv run app/main.py validate <filename>")
                 print(
-                    "Example: uv run app/main.py validate optimisation_validation/betting_results/Premier-League_best_betting_results.csv "
+                    "Usage: python main.py validate <betting_file> <predictions_file>"
+                )
+                print(
+                    "Example: python main.py validate "
+                    "optimisation_validation/betting_results/Premier-League_best_betting_results.csv "
                     "optimisation_validation/prediction_results/Premier-League_best_predictions.csv"
                 )
 

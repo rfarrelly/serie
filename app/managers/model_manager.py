@@ -1,0 +1,258 @@
+"""
+Model manager for handling multiple league models.
+"""
+
+import itertools
+import random
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import pandas as pd
+from analysis.betting import BettingCalculator
+from backtesting import BackTestConfig, ImprovedBacktester
+from models.core import ModelConfig
+from models.zsd_model import ZSDPoissonModel
+from utils.config_manager import ConfigManager
+
+
+class ModelManager:
+    """Manages ZSD Poisson models for multiple leagues."""
+
+    def __init__(self, global_config, config_dir: Path = Path("zsd_configs")):
+        self.global_config = global_config
+        self.config_manager = ConfigManager(config_dir)
+        self.betting_calculator = BettingCalculator()
+        self.models = {}
+
+    def optimize_league_parameters(
+        self, historical_data: pd.DataFrame, league: str, save_config: bool = True
+    ) -> ModelConfig:
+        """Optimize regularization parameters for a specific league."""
+        print(f"Optimizing parameters for {league}...")
+
+        league_data = historical_data[historical_data["League"] == league].copy()
+        if len(league_data) < 100:
+            print(f"Insufficient data for {league}, using default config")
+            return self.config_manager.default_config
+
+        param_combinations = self._generate_param_combinations()
+        best_config = self._find_best_config(league_data, param_combinations, league)
+
+        if save_config:
+            self.config_manager.save_league_config(league, best_config)
+
+        return best_config
+
+    def fit_league_model(
+        self,
+        historical_data: pd.DataFrame,
+        league: str,
+        min_training_matches: int = 180,
+    ) -> Optional[ZSDPoissonModel]:
+        """Fit a ZSD Poisson model for a specific league."""
+        print(f"Fitting ZSD model for {league}...")
+
+        league_data = historical_data[historical_data["League"] == league].copy()
+        league_data = league_data.sort_values("Date").reset_index(drop=True)
+
+        if len(league_data) < min_training_matches:
+            print(f"Insufficient data for {league}: {len(league_data)} matches")
+            return None
+
+        config = self.config_manager.load_league_config(league)
+
+        try:
+            model = ZSDPoissonModel(config)
+            model.fit(league_data)
+            self.models[league] = model
+
+            print(f"  Successfully fitted model for {league}")
+            print(
+                f"  Training data: {len(league_data)} matches, Teams: {len(model.teams)}"
+            )
+            return model
+
+        except Exception as e:
+            print(f"Error fitting model for {league}: {e}")
+            return None
+
+    def predict_matches(self, fixtures_df: pd.DataFrame) -> pd.DataFrame:
+        """Generate predictions for upcoming matches."""
+        predictions = []
+
+        for _, match in fixtures_df.iterrows():
+            league = match.get("League")
+            model = self.models.get(league)
+
+            if model is None:
+                print(f"No model available for {league}")
+                continue
+
+            try:
+                pred_dict = self._generate_match_predictions(match, model)
+                predictions.append(pred_dict)
+            except Exception as e:
+                print(f"Error predicting {match['Home']} vs {match['Away']}: {e}")
+
+        return pd.DataFrame(predictions)
+
+    def _generate_param_combinations(self) -> List[Dict]:
+        """Generate parameter combinations for optimization."""
+        param_grid = {
+            "l1_reg": [0.0, 0.001],
+            "l2_reg": [0.005, 0.01, 0.05],
+            "team_reg": [0.001, 0.005, 0.01],
+            "decay_rate": [0.0005, 0.001],
+        }
+
+        all_combos = list(itertools.product(*param_grid.values()))
+        selected_combos = random.sample(all_combos, k=min(5, len(all_combos)))
+
+        return [dict(zip(param_grid.keys(), combo)) for combo in selected_combos]
+
+    def _find_best_config(
+        self, league_data: pd.DataFrame, param_combinations: List[Dict], league: str
+    ) -> ModelConfig:
+        """Find the best configuration through backtesting."""
+        best_config, best_score = None, float("inf")
+
+        backtest_config = BackTestConfig(
+            min_training_weeks=8, betting_threshold=0.02, stake_size=1.0
+        )
+        backtester = ImprovedBacktester(backtest_config)
+
+        for i, params in enumerate(param_combinations):
+            print(f"  Testing combination {i + 1}/{len(param_combinations)}: {params}")
+
+            try:
+                test_config = ModelConfig(
+                    **{**self.config_manager.default_config.__dict__, **params}
+                )
+
+                results = backtester.backtest_cross_season(
+                    data=league_data,
+                    model_class=lambda **kwargs: ZSDPoissonModel(test_config),
+                    train_season=self.global_config.previous_season,
+                    test_season=self.global_config.current_season,
+                    league=league,
+                )
+
+                score = self._calculate_optimization_score(results)
+
+                if score < best_score:
+                    best_score = score
+                    best_config = test_config
+                    self._save_best_results(results, league)
+
+            except Exception as e:
+                print(f"    Error testing parameters: {e}")
+                continue
+
+        return best_config or self.config_manager.default_config
+
+    def _calculate_optimization_score(self, results) -> float:
+        """Calculate optimization score from backtest results."""
+        log_loss = results.metrics.get("log_loss", 10.0)
+        roi = results.metrics.get("roi_percent", -100.0)
+        n_bets = results.metrics.get("total_bets", 0)
+
+        bet_penalty = max(0, (50 - n_bets) * 0.01) if n_bets < 50 else 0
+        score = log_loss - (roi / 100.0) + bet_penalty
+
+        print(
+            f"    Score: {score:.4f} (LogLoss: {log_loss:.4f}, ROI: {roi:.1f}%, Bets: {n_bets})"
+        )
+        return score
+
+    def _save_best_results(self, results, league: str):
+        """Save best optimization results."""
+        backtester = ImprovedBacktester(BackTestConfig())
+
+        # Create directories if they don't exist
+        Path("optimisation_validation/betting_results").mkdir(
+            parents=True, exist_ok=True
+        )
+        Path("optimisation_validation/prediction_results").mkdir(
+            parents=True, exist_ok=True
+        )
+
+        backtester.save_betting_results_to_csv(
+            results,
+            f"optimisation_validation/betting_results/{league}_best_betting_results.csv",
+        )
+        backtester.save_predictions_to_csv(
+            results,
+            f"optimisation_validation/prediction_results/{league}_best_predictions.csv",
+        )
+
+    def _generate_match_predictions(self, match, model) -> Dict:
+        """Generate all prediction types for a single match."""
+        home_team, away_team = match["Home"], match["Away"]
+
+        # Get predictions for all methods
+        methods = ["poisson", "zip", "mov"]
+        predictions = {
+            method: model.predict_match(home_team, away_team, method=method)
+            for method in methods
+        }
+
+        # Build base prediction dictionary
+        pred_dict = {
+            "Date": match["Date"],
+            "League": match.get("League"),
+            "Home": home_team,
+            "Away": away_team,
+        }
+
+        # Add predictions for each method
+        method_names = ["Poisson", "ZIP", "MOV"]
+        for method, name in zip(methods, method_names):
+            pred = predictions[method]
+            pred_dict.update(
+                {
+                    f"{name}_Prob_H": pred.prob_home_win,
+                    f"{name}_Prob_D": pred.prob_draw,
+                    f"{name}_Prob_A": pred.prob_away_win,
+                }
+            )
+
+        # Add backward compatibility fields (using ZIP as primary)
+        zip_pred = predictions["zip"]
+        pred_dict.update(
+            {
+                "ZSD_Prob_H": zip_pred.prob_home_win,
+                "ZSD_Prob_D": zip_pred.prob_draw,
+                "ZSD_Prob_A": zip_pred.prob_away_win,
+                "ZSD_Lambda_H": zip_pred.lambda_home,
+                "ZSD_Lambda_A": zip_pred.lambda_away,
+                "ZSD_MOV": zip_pred.mov_prediction,
+                "ZSD_MOV_SE": zip_pred.mov_std_error,
+                "Model_Type": zip_pred.model_type,
+            }
+        )
+
+        # Add fixture columns if present
+        fixture_cols = [
+            "Wk",
+            "PSH",
+            "PSD",
+            "PSA",
+            "PSCH",
+            "PSCD",
+            "PSCA",
+            "B365H",
+            "B365D",
+            "B365A",
+            "B365CH",
+            "B365CD",
+            "B365CA",
+            "PPI_Diff",
+            "hPPI",
+            "aPPI",
+        ]
+
+        for col in fixture_cols:
+            if col in match.index:
+                pred_dict[col] = match[col]
+
+        return pred_dict
