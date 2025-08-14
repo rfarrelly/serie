@@ -4,12 +4,14 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from analysis.betting import BettingCalculator, BettingFilter
+from models.core import ModelConfig
 from scipy.stats import poisson
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.preprocessing import StandardScaler
 from utils.odds_helpers import get_no_vig_odds_multiway
-from zsd_poisson_model import ModelConfig, ZSDPoissonModel
+from zsd_poisson_model import ZSDPoissonModel
 
 warnings.filterwarnings("ignore")
 
@@ -24,6 +26,9 @@ class BackTestConfig:
     stake_size: float = 1.0
     max_stake_fraction: float = 0.05  # Max fraction of bankroll per bet
     ppi_filter_top_n: int = 4  # Number of top matches to filter by PPI_Diff
+    min_edge: float = 0.02  # Minimum edge for betting
+    min_prob: float = 0.1  # Minimum probability for betting
+    max_odds: float = 10.0  # Maximum odds for betting
 
 
 @dataclass
@@ -34,13 +39,14 @@ class BettingResult:
     date: pd.Timestamp
     home_team: str
     away_team: str
-    bet_type: str  # 'home', 'draw', 'away'
+    bet_type: str  # 'Home', 'Draw', 'Away'
     stake: float
     odds: float
     profit: float
     model_prob: float
-    fair_prob: float
+    market_prob: float
     edge: float
+    expected_value: float
 
 
 @dataclass
@@ -120,68 +126,73 @@ class ModelEvaluator:
 
 
 class BettingSimulator:
-    """Simulates betting strategy and tracks performance."""
+    """Simulates betting strategy and tracks performance using BettingCalculator."""
 
     def __init__(self, config: BackTestConfig):
         self.config = config
         self.bankroll = 100.0  # Starting bankroll
         self.betting_history = []
+        self.betting_calculator = BettingCalculator()
+        self.betting_filter = BettingFilter(
+            min_edge=config.min_edge, min_prob=config.min_prob, max_odds=config.max_odds
+        )
 
     def evaluate_bet(
         self,
-        model_probs: np.ndarray,
-        fair_probs: np.ndarray,
-        odds: np.ndarray,
-        outcome: int,
-        match_info: Dict,
+        prediction_row: pd.Series,
+        actual_outcome: int,
     ) -> Optional[BettingResult]:
-        """Evaluate whether to place a bet and calculate result."""
-        if len(model_probs) != 3 or len(fair_probs) != 3 or len(odds) != 3:
+        """Evaluate whether to place a bet using BettingCalculator."""
+        try:
+            # Use the BettingCalculator to analyze the prediction
+            betting_metrics = self.betting_calculator.analyze_prediction(prediction_row)
+
+            if betting_metrics is None:
+                return None
+
+            # Check if it meets our betting criteria
+            if betting_metrics.edge < self.config.betting_threshold:
+                return None
+
+            # Kelly criterion for stake sizing (simplified)
+            kelly_fraction = betting_metrics.edge / (betting_metrics.soft_odds - 1)
+            stake = min(
+                self.config.stake_size,
+                self.bankroll * min(kelly_fraction, self.config.max_stake_fraction),
+            )
+
+            # Calculate profit based on actual outcome
+            bet_outcome_map = {"Home": 0, "Draw": 1, "Away": 2}
+            bet_outcome_idx = bet_outcome_map[betting_metrics.bet_type]
+
+            if bet_outcome_idx == actual_outcome:
+                profit = stake * (betting_metrics.soft_odds - 1)
+            else:
+                profit = -stake
+
+            self.bankroll += profit
+
+            result = BettingResult(
+                match_id=f"{prediction_row['Home']}_{prediction_row['Away']}_{prediction_row['Date']}",
+                date=prediction_row["Date"],
+                home_team=prediction_row["Home"],
+                away_team=prediction_row["Away"],
+                bet_type=betting_metrics.bet_type,
+                stake=stake,
+                odds=betting_metrics.soft_odds,
+                profit=profit,
+                model_prob=betting_metrics.model_prob,
+                market_prob=betting_metrics.market_prob,
+                edge=betting_metrics.edge,
+                expected_value=betting_metrics.edge * stake,
+            )
+
+            self.betting_history.append(result)
+            return result
+
+        except Exception as e:
+            print(f"Error evaluating bet: {e}")
             return None
-
-        # Calculate edges
-        edges = model_probs - fair_probs
-        max_edge = np.max(edges)
-
-        if max_edge < self.config.betting_threshold:
-            return None
-
-        # Place bet on outcome with highest edge
-        bet_idx = np.argmax(edges)
-        bet_types = ["home", "draw", "away"]
-
-        # Kelly criterion for stake sizing (simplified)
-        edge = edges[bet_idx]
-        kelly_fraction = edge / (odds[bet_idx] - 1)
-        stake = min(
-            self.config.stake_size,
-            self.bankroll * min(kelly_fraction, self.config.max_stake_fraction),
-        )
-
-        # Calculate profit
-        if bet_idx == outcome:
-            profit = stake * (odds[bet_idx] - 1)
-        else:
-            profit = -stake
-
-        self.bankroll += profit
-
-        result = BettingResult(
-            match_id=f"{match_info['home']}_{match_info['away']}_{match_info['date']}",
-            date=match_info["date"],
-            home_team=match_info["home"],
-            away_team=match_info["away"],
-            bet_type=bet_types[bet_idx],
-            stake=stake,
-            odds=odds[bet_idx],
-            profit=profit,
-            model_prob=model_probs[bet_idx],
-            fair_prob=fair_probs[bet_idx],
-            edge=edge,
-        )
-
-        self.betting_history.append(result)
-        return result
 
 
 class ProbabilityCalibrator:
@@ -234,7 +245,7 @@ class ProbabilityCalibrator:
 
 
 class ImprovedBacktester:
-    """Improved backtesting framework with better structure and features."""
+    """Improved backtesting framework with BettingCalculator integration."""
 
     def __init__(self, config: Optional[BackTestConfig] = None):
         self.config = config or BackTestConfig()
@@ -250,7 +261,7 @@ class ImprovedBacktester:
         league: str,
         model_params: Optional[Dict] = None,
     ) -> BackTestResults:
-        """Run cross-season backtest with improved error handling and metrics."""
+        """Run cross-season backtest with enhanced features and BettingCalculator."""
 
         # Filter and prepare data
         train_data = (
@@ -267,9 +278,7 @@ class ImprovedBacktester:
 
         # Remove promoted and relegated teams
         teams_train_data = set(pd.concat([train_data["Home"], train_data["Away"]]))
-
         teams_test_data = set(pd.concat([test_data["Home"], test_data["Away"]]))
-
         common_teams = teams_train_data & teams_test_data
 
         train_data = train_data[
@@ -306,15 +315,12 @@ class ImprovedBacktester:
                     [train_data, past_test_data], ignore_index=True
                 )
 
-                # Fit model - Updated to work with new ZSDPoissonModel
+                # Fit model
                 model_params = model_params or {}
 
-                # Create model instance
                 if isinstance(model_class, type):
-                    # If it's a class, instantiate it
                     model = model_class(model_params.get("config", ModelConfig()))
                 else:
-                    # If it's a factory function, call it
                     model = model_class(**model_params)
 
                 model.fit(combined_training)
@@ -330,12 +336,13 @@ class ImprovedBacktester:
                     if prediction_result:
                         week_predictions.append(prediction_result)
 
-                        # Evaluate betting opportunity
+                        # Evaluate betting opportunity using BettingCalculator
                         betting_result = self._evaluate_betting_opportunity(
-                            prediction_result, prediction_result["Actual_Outcome"]
+                            pd.Series(prediction_result),
+                            prediction_result["Actual_Outcome"],
                         )
                         if betting_result:
-                            week_betting_results.extend(betting_result)
+                            week_betting_results.append(betting_result)
 
                 all_predictions.extend(week_predictions)
 
@@ -429,7 +436,7 @@ class ImprovedBacktester:
                     [train_data, past_test_data], ignore_index=True
                 )
 
-                # Fit model - Updated to work with new ZSDPoissonModel
+                # Fit model
                 model_params = model_params or {}
 
                 if isinstance(model_class, type):
@@ -477,10 +484,10 @@ class ImprovedBacktester:
                 week_betting_results = []
                 for _, prediction_row in filtered_matches.iterrows():
                     betting_result = self._evaluate_betting_opportunity(
-                        prediction_row.to_dict(), prediction_row["Actual_Outcome"]
+                        prediction_row, prediction_row["Actual_Outcome"]
                     )
                     if betting_result:
-                        week_betting_results.extend(betting_result)
+                        week_betting_results.append(betting_result)
 
                 all_predictions.extend(filtered_matches.to_dict(orient="records"))
 
@@ -514,22 +521,29 @@ class ImprovedBacktester:
         )
 
     def _predict_single_match(self, model, match_row: pd.Series) -> Optional[Dict]:
-        """Generate prediction for a single match."""
+        """Generate prediction for a single match with proper odds handling."""
         try:
             home_team = match_row["Home"]
             away_team = match_row["Away"]
 
-            # Get model prediction - Updated to work with new model structure
-            prediction = self._get_match_prediction(model, home_team, away_team)
+            # Get predictions for all methods that BettingCalculator expects
+            predictions = self._get_all_method_predictions(model, home_team, away_team)
 
-            # Calculate fair probabilities from odds
-            odds = [
+            # Extract both sharp and soft odds
+            sharp_odds = [
                 match_row.get("PSH", np.nan),
                 match_row.get("PSD", np.nan),
                 match_row.get("PSA", np.nan),
             ]
 
-            fair_probs = self._calculate_fair_probabilities(odds)
+            soft_odds = [
+                match_row.get("B365H", np.nan),
+                match_row.get("B365D", np.nan),
+                match_row.get("B365A", np.nan),
+            ]
+
+            # Calculate fair probabilities from sharp odds
+            fair_probs = self._calculate_fair_probabilities(sharp_odds)
 
             # Determine actual outcome
             actual_outcome = self._get_actual_outcome(match_row)
@@ -551,19 +565,37 @@ class ImprovedBacktester:
                 "FTHG": match_row["FTHG"],
                 "FTAG": match_row["FTAG"],
                 "Actual_Outcome": actual_outcome,
-                "Model_Prob_H": prediction.prob_home_win,
-                "Model_Prob_D": prediction.prob_draw,
-                "Model_Prob_A": prediction.prob_away_win,
+                # Primary model probabilities (for backward compatibility)
+                "Model_Prob_H": predictions["zip"]["prob_home_win"],
+                "Model_Prob_D": predictions["zip"]["prob_draw"],
+                "Model_Prob_A": predictions["zip"]["prob_away_win"],
+                # All method probabilities (expected by BettingCalculator)
+                "Poisson_Prob_H": predictions["poisson"]["prob_home_win"],
+                "Poisson_Prob_D": predictions["poisson"]["prob_draw"],
+                "Poisson_Prob_A": predictions["poisson"]["prob_away_win"],
+                "ZIP_Prob_H": predictions["zip"]["prob_home_win"],
+                "ZIP_Prob_D": predictions["zip"]["prob_draw"],
+                "ZIP_Prob_A": predictions["zip"]["prob_away_win"],
+                "MOV_Prob_H": predictions["mov"]["prob_home_win"],
+                "MOV_Prob_D": predictions["mov"]["prob_draw"],
+                "MOV_Prob_A": predictions["mov"]["prob_away_win"],
+                # Fair probabilities from market
                 "Fair_Prob_H": fair_probs[0],
                 "Fair_Prob_D": fair_probs[1],
                 "Fair_Prob_A": fair_probs[2],
-                "Lambda_Home": prediction.lambda_home,
-                "Lambda_Away": prediction.lambda_away,
-                "MOV_Prediction": prediction.mov_prediction,
-                "MOV_StdError": prediction.mov_std_error,
-                "PSH": odds[0],
-                "PSD": odds[1],
-                "PSA": odds[2],
+                # Model outputs
+                "Lambda_Home": predictions["zip"]["lambda_home"],
+                "Lambda_Away": predictions["zip"]["lambda_away"],
+                "MOV_Prediction": predictions["zip"]["mov_prediction"],
+                "MOV_StdError": predictions["zip"]["mov_std_error"],
+                # Sharp odds (for fair probabilities)
+                "PSH": sharp_odds[0],
+                "PSD": sharp_odds[1],
+                "PSA": sharp_odds[2],
+                # Soft odds (for betting)
+                "B365H": soft_odds[0],
+                "B365D": soft_odds[1],
+                "B365A": soft_odds[2],
                 **ppi_features,
             }
 
@@ -573,24 +605,84 @@ class ImprovedBacktester:
             )
             return None
 
-    def _get_match_prediction(
+    def _get_all_method_predictions(
         self, model, home_team: str, away_team: str
-    ) -> MatchPrediction:
-        """Get match prediction from model, handling the new model structure."""
+    ) -> Dict[str, Dict]:
+        """Get predictions for all methods that BettingCalculator expects."""
         try:
             # Check if teams exist in model
             if home_team not in model.team_index or away_team not in model.team_index:
-                # Return default prediction for unknown teams
-                return MatchPrediction(
-                    prob_home_win=0.33,
-                    prob_draw=0.33,
-                    prob_away_win=0.34,
-                    lambda_home=1.5,
-                    lambda_away=1.2,
-                    mov_prediction=0.0,
-                    mov_std_error=1.0,
-                )
+                # Return default predictions for unknown teams
+                default_prediction = {
+                    "prob_home_win": 0.33,
+                    "prob_draw": 0.33,
+                    "prob_away_win": 0.34,
+                    "lambda_home": 1.5,
+                    "lambda_away": 1.2,
+                    "mov_prediction": 0.0,
+                    "mov_std_error": 1.0,
+                }
+                return {
+                    "poisson": default_prediction.copy(),
+                    "zip": default_prediction.copy(),
+                    "mov": default_prediction.copy(),
+                }
 
+            # If model has predict_match method with different prediction types
+            if hasattr(model, "predict_match"):
+                predictions = {}
+                for method in ["poisson", "zip", "mov"]:
+                    try:
+                        pred = model.predict_match(home_team, away_team, method=method)
+                        predictions[method] = {
+                            "prob_home_win": pred.prob_home_win,
+                            "prob_draw": pred.prob_draw,
+                            "prob_away_win": pred.prob_away_win,
+                            "lambda_home": pred.lambda_home,
+                            "lambda_away": pred.lambda_away,
+                            "mov_prediction": pred.mov_prediction,
+                            "mov_std_error": pred.mov_std_error,
+                        }
+                    except:
+                        # Fall back to basic calculation if method not available
+                        predictions[method] = self._calculate_basic_prediction(
+                            model, home_team, away_team
+                        )
+                return predictions
+            else:
+                # Fall back to manual calculation for all methods
+                basic_pred = self._calculate_basic_prediction(
+                    model, home_team, away_team
+                )
+                return {
+                    "poisson": basic_pred.copy(),
+                    "zip": basic_pred.copy(),
+                    "mov": basic_pred.copy(),
+                }
+
+        except Exception as e:
+            print(f"Error in _get_all_method_predictions: {e}")
+            # Return default predictions
+            default_prediction = {
+                "prob_home_win": 0.33,
+                "prob_draw": 0.33,
+                "prob_away_win": 0.34,
+                "lambda_home": 1.5,
+                "lambda_away": 1.2,
+                "mov_prediction": 0.0,
+                "mov_std_error": 1.0,
+            }
+            return {
+                "poisson": default_prediction.copy(),
+                "zip": default_prediction.copy(),
+                "mov": default_prediction.copy(),
+            }
+
+    def _calculate_basic_prediction(
+        self, model, home_team: str, away_team: str
+    ) -> Dict:
+        """Calculate basic prediction when advanced methods aren't available."""
+        try:
             # Get team indices
             home_idx = model.team_index[home_team]
             away_idx = model.team_index[away_team]
@@ -609,12 +701,11 @@ class ImprovedBacktester:
             )
 
             # Convert strength to expected goals (simplified approach)
-            # You may need to adjust this based on your model's _strength_to_goals method
             lambda_home = max(0.1, 1.5 + 0.5 * home_strength)
             lambda_away = max(0.1, 1.2 + 0.5 * away_strength)
 
             # Calculate match outcome probabilities using Poisson distribution
-            max_goals = model.config.max_goals
+            max_goals = getattr(model.config, "max_goals", 15)
             prob_matrix = np.zeros((max_goals + 1, max_goals + 1))
 
             for h_goals in range(max_goals + 1):
@@ -653,28 +744,28 @@ class ImprovedBacktester:
             mov_prediction = lambda_home - lambda_away
             mov_std_error = np.sqrt(lambda_home + lambda_away)
 
-            return MatchPrediction(
-                prob_home_win=prob_home_win,
-                prob_draw=prob_draw,
-                prob_away_win=prob_away_win,
-                lambda_home=lambda_home,
-                lambda_away=lambda_away,
-                mov_prediction=mov_prediction,
-                mov_std_error=mov_std_error,
-            )
+            return {
+                "prob_home_win": prob_home_win,
+                "prob_draw": prob_draw,
+                "prob_away_win": prob_away_win,
+                "lambda_home": lambda_home,
+                "lambda_away": lambda_away,
+                "mov_prediction": mov_prediction,
+                "mov_std_error": mov_std_error,
+            }
 
         except Exception as e:
-            print(f"Error in _get_match_prediction: {e}")
+            print(f"Error in _calculate_basic_prediction: {e}")
             # Return default prediction
-            return MatchPrediction(
-                prob_home_win=0.33,
-                prob_draw=0.33,
-                prob_away_win=0.34,
-                lambda_home=1.5,
-                lambda_away=1.2,
-                mov_prediction=0.0,
-                mov_std_error=1.0,
-            )
+            return {
+                "prob_home_win": 0.33,
+                "prob_draw": 0.33,
+                "prob_away_win": 0.34,
+                "lambda_home": 1.5,
+                "lambda_away": 1.2,
+                "mov_prediction": 0.0,
+                "mov_std_error": 1.0,
+            }
 
     def _calculate_fair_probabilities(self, odds: List[float]) -> List[float]:
         """Calculate fair (no-vig) probabilities from bookmaker odds."""
@@ -703,85 +794,24 @@ class ImprovedBacktester:
             return 2  # Away win
 
     def _evaluate_betting_opportunity(
-        self, prediction: Dict, actual_outcome: int
-    ) -> List[BettingResult]:
-        """Evaluate if there's a profitable betting opportunity."""
-        model_probs = np.array(
-            [
-                prediction["Model_Prob_H"],
-                prediction["Model_Prob_D"],
-                prediction["Model_Prob_A"],
-            ]
-        )
-
-        fair_probs = np.array(
-            [
-                prediction["Fair_Prob_H"],
-                prediction["Fair_Prob_D"],
-                prediction["Fair_Prob_A"],
-            ]
-        )
-
-        odds = np.array([prediction["PSH"], prediction["PSD"], prediction["PSA"]])
-
-        # Skip if any probabilities are NaN
-        if (
-            np.any(np.isnan(model_probs))
-            or np.any(np.isnan(fair_probs))
-            or np.any(np.isnan(odds))
-        ):
-            return []
-
-        # Calculate edges
-        edges = model_probs - fair_probs
-        max_edge = np.max(edges)
-
-        if max_edge < self.config.betting_threshold:
-            return []
-
-        # Place bet on outcome with highest edge
-        bet_idx = np.argmax(edges)
-        bet_types = ["home", "draw", "away"]
-
-        # Kelly criterion for stake sizing (simplified)
-        edge = edges[bet_idx]
-        kelly_fraction = edge / (odds[bet_idx] - 1)
-        stake = min(
-            self.config.stake_size,
-            self.betting_simulator.bankroll
-            * min(kelly_fraction, self.config.max_stake_fraction),
-        )
-
-        # Calculate profit
-        if bet_idx == actual_outcome:
-            profit = stake * (odds[bet_idx] - 1)
-        else:
-            profit = -stake
-
-        self.betting_simulator.bankroll += profit
-
-        result = BettingResult(
-            match_id=f"{prediction['Home']}_{prediction['Away']}_{prediction['Date']}",
-            date=prediction["Date"],
-            home_team=prediction["Home"],
-            away_team=prediction["Away"],
-            bet_type=bet_types[bet_idx],
-            stake=stake,
-            odds=odds[bet_idx],
-            profit=profit,
-            model_prob=model_probs[bet_idx],
-            fair_prob=fair_probs[bet_idx],
-            edge=edge,
-        )
-
-        self.betting_simulator.betting_history.append(result)
-        return [result]
+        self, prediction_row: pd.Series, actual_outcome: int
+    ) -> Optional[BettingResult]:
+        """Evaluate betting opportunity using BettingCalculator."""
+        return self.betting_simulator.evaluate_bet(prediction_row, actual_outcome)
 
     def _calculate_weekly_metrics(self, week_df: pd.DataFrame, week: int) -> Dict:
         """Calculate metrics for a single week."""
         y_true = week_df["Actual_Outcome"].values
         y_prob = week_df[["Model_Prob_H", "Model_Prob_D", "Model_Prob_A"]].values
-        fair_probs = week_df[["Fair_Prob_H", "Fair_Prob_D", "Fair_Prob_A"]].values
+
+        # Handle missing fair probabilities gracefully
+        if all(
+            col in week_df.columns
+            for col in ["Fair_Prob_H", "Fair_Prob_D", "Fair_Prob_A"]
+        ):
+            fair_probs = week_df[["Fair_Prob_H", "Fair_Prob_D", "Fair_Prob_A"]].values
+        else:
+            fair_probs = None
 
         metrics = self.evaluator.calculate_metrics(y_true, y_prob, fair_probs)
         metrics["Week"] = week
@@ -799,9 +829,17 @@ class ImprovedBacktester:
         # Model performance metrics
         y_true = predictions_df["Actual_Outcome"].values
         y_prob = predictions_df[["Model_Prob_H", "Model_Prob_D", "Model_Prob_A"]].values
-        fair_probs = predictions_df[
-            ["Fair_Prob_H", "Fair_Prob_D", "Fair_Prob_A"]
-        ].values
+
+        # Handle missing fair probabilities gracefully
+        if all(
+            col in predictions_df.columns
+            for col in ["Fair_Prob_H", "Fair_Prob_D", "Fair_Prob_A"]
+        ):
+            fair_probs = predictions_df[
+                ["Fair_Prob_H", "Fair_Prob_D", "Fair_Prob_A"]
+            ].values
+        else:
+            fair_probs = None
 
         model_metrics = self.evaluator.calculate_metrics(y_true, y_prob, fair_probs)
 
@@ -830,6 +868,7 @@ class ImprovedBacktester:
         profits = [bet.profit for bet in betting_history]
         stakes = [bet.stake for bet in betting_history]
         edges = [bet.edge for bet in betting_history]
+        expected_values = [bet.expected_value for bet in betting_history]
         wins = [bet.profit > 0 for bet in betting_history]
 
         return {
@@ -839,6 +878,7 @@ class ImprovedBacktester:
             "roi_percent": 100 * sum(profits) / sum(stakes) if sum(stakes) > 0 else 0.0,
             "win_rate": 100 * sum(wins) / len(wins) if wins else 0.0,
             "avg_edge": np.mean(edges),
+            "avg_expected_value": np.mean(expected_values),
             "profit_per_bet": np.mean(profits),
             "final_bankroll": self.betting_simulator.bankroll,
             "max_profit": max(profits) if profits else 0.0,
@@ -920,9 +960,9 @@ class ImprovedBacktester:
 
         # Update test dataframe with calibrated probabilities
         test_df = test_df.copy()
-        test_df["Calibrated_Prob_H"] = calibrated_probs[:, 0]
-        test_df["Calibrated_Prob_D"] = calibrated_probs[:, 1]
-        test_df["Calibrated_Prob_A"] = calibrated_probs[:, 2]
+        test_df["Model_Prob_H"] = calibrated_probs[:, 0]
+        test_df["Model_Prob_D"] = calibrated_probs[:, 1]
+        test_df["Model_Prob_A"] = calibrated_probs[:, 2]
 
         # Recalculate metrics with calibrated probabilities
         y_true = test_df["Actual_Outcome"].values
@@ -931,34 +971,16 @@ class ImprovedBacktester:
 
         cal_metrics = self.evaluator.calculate_metrics(y_true, y_prob_cal, fair_probs)
 
-        # Simulate betting with calibrated probabilities
+        # Simulate betting with calibrated probabilities using BettingCalculator
         cal_betting_simulator = BettingSimulator(self.config)
-        for _, row in test_df.iterrows():
-            model_probs = np.array(
-                [
-                    row["Calibrated_Prob_H"],
-                    row["Calibrated_Prob_D"],
-                    row["Calibrated_Prob_A"],
-                ]
-            )
-            fair_probs_row = np.array(
-                [row["Fair_Prob_H"], row["Fair_Prob_D"], row["Fair_Prob_A"]]
-            )
-            odds = np.array([row["PSH"], row["PSD"], row["PSA"]])
+        cal_betting_results = []
 
-            if not (
-                np.any(np.isnan(model_probs))
-                or np.any(np.isnan(fair_probs_row))
-                or np.any(np.isnan(odds))
-            ):
-                match_info = {
-                    "home": row["Home"],
-                    "away": row["Away"],
-                    "date": row["Date"],
-                }
-                cal_betting_simulator.evaluate_bet(
-                    model_probs, fair_probs_row, odds, row["Actual_Outcome"], match_info
-                )
+        for _, row in test_df.iterrows():
+            betting_result = cal_betting_simulator.evaluate_bet(
+                row, row["Actual_Outcome"]
+            )
+            if betting_result:
+                cal_betting_results.append(betting_result)
 
         # Calculate calibrated betting metrics
         cal_betting_metrics = self._calculate_betting_metrics_from_simulator(
@@ -992,6 +1014,7 @@ class ImprovedBacktester:
         profits = [bet.profit for bet in betting_history]
         stakes = [bet.stake for bet in betting_history]
         edges = [bet.edge for bet in betting_history]
+        expected_values = [bet.expected_value for bet in betting_history]
         wins = [bet.profit > 0 for bet in betting_history]
 
         return {
@@ -1001,6 +1024,7 @@ class ImprovedBacktester:
             "roi_percent": 100 * sum(profits) / sum(stakes) if sum(stakes) > 0 else 0.0,
             "win_rate": 100 * sum(wins) / len(wins) if wins else 0.0,
             "avg_edge": np.mean(edges),
+            "avg_expected_value": np.mean(expected_values),
             "profit_per_bet": np.mean(profits),
             "final_bankroll": simulator.bankroll,
             "max_profit": max(profits) if profits else 0.0,
@@ -1030,6 +1054,9 @@ class ImprovedBacktester:
             print(f"  ROI: {metrics.get('roi_percent', 0):.2f}%")
             print(f"  Win Rate: {metrics.get('win_rate', 0):.1f}%")
             print(f"  Average Edge: {metrics.get('avg_edge', 0):.3f}")
+            print(
+                f"  Average Expected Value: ${metrics.get('avg_expected_value', 0):.2f}"
+            )
             print(f"  Final Bankroll: ${metrics.get('final_bankroll', 100):.2f}")
 
     def save_betting_results_to_csv(
@@ -1070,16 +1097,19 @@ def run_backtest_example():
         l1_reg=0.0,
         l2_reg=0.01,
         team_reg=0.005,
-        auto_tune_regularization=False,  # Set to True if you want auto-tuning
+        auto_tune_regularization=False,
     )
 
-    # Configure the backtesting
+    # Configure the backtesting with BettingCalculator integration
     backtest_config = BackTestConfig(
         min_training_weeks=10,
         calibration_method="logistic",
         betting_threshold=0.025,
         stake_size=1.0,
         ppi_filter_top_n=4,
+        min_edge=0.02,
+        min_prob=0.1,
+        max_odds=10.0,
     )
 
     # Create backtester
@@ -1092,7 +1122,7 @@ def run_backtest_example():
 
     # Run base backtest
     print("\n" + "=" * 60)
-    print("Running Base Backtest Example...")
+    print("Running Enhanced Backtest with BettingCalculator...")
     print("=" * 60)
     try:
         base_results = backtester.backtest_cross_season(
@@ -1106,7 +1136,7 @@ def run_backtest_example():
 
         # Print results
         print("\n" + "=" * 60)
-        print("BASE BACKTEST RESULTS")
+        print("ENHANCED BACKTEST RESULTS")
         print("=" * 60)
 
         metrics = base_results.metrics
@@ -1116,32 +1146,31 @@ def run_backtest_example():
         print(f"  Brier Score: {metrics.get('brier_score', 0):.4f}")
         print(f"  Total Predictions: {metrics.get('n_predictions', 0)}")
 
-        print(f"\nBetting Performance:")
+        print(f"\nBetting Performance (with BettingCalculator):")
         print(f"  Total Bets: {metrics.get('total_bets', 0)}")
         print(f"  Total Profit: ${metrics.get('total_profit', 0):.2f}")
         print(f"  ROI: {metrics.get('roi_percent', 0):.2f}%")
         print(f"  Win Rate: {metrics.get('win_rate', 0):.1f}%")
         print(f"  Average Edge: {metrics.get('avg_edge', 0):.3f}")
-        print(
-            f"  Final Bankroll: ${base_results.metrics.get('final_bankroll', 100):.2f}"
-        )
+        print(f"  Average Expected Value: ${metrics.get('avg_expected_value', 0):.2f}")
+        print(f"  Final Bankroll: ${metrics.get('final_bankroll', 100):.2f}")
 
         # Show some sample predictions
         if not base_results.predictions_df.empty:
-            print(f"\nSample Predictions (Base Model):")
-            print(
-                base_results.predictions_df[
-                    [
-                        "Date",
-                        "Home",
-                        "Away",
-                        "Model_Prob_H",
-                        "Model_Prob_D",
-                        "Model_Prob_A",
-                        "Actual_Outcome",
-                    ]
-                ].head(10)
-            )
+            print(f"\nSample Predictions (Enhanced Model):")
+            display_cols = [
+                "Date",
+                "Home",
+                "Away",
+                "Model_Prob_H",
+                "Model_Prob_D",
+                "Model_Prob_A",
+                "Fair_Prob_H",
+                "Fair_Prob_D",
+                "Fair_Prob_A",
+                "Actual_Outcome",
+            ]
+            print(base_results.predictions_df[display_cols].head(10))
 
         # Show betting results if any
         if base_results.betting_results:
@@ -1155,23 +1184,29 @@ def run_backtest_example():
                         "Odds": bet.odds,
                         "Profit": bet.profit,
                         "Edge": bet.edge,
+                        "Expected_Value": bet.expected_value,
                     }
                     for bet in base_results.betting_results[:10]
                 ]
             )
 
-            print(f"\nSample Bets (Base Model):")
+            print(f"\nSample Bets (Enhanced Model with BettingCalculator):")
             print(betting_df)
 
         # Save results to CSV
-        backtester.save_betting_results_to_csv(base_results, "base_betting_results.csv")
-        backtester.save_predictions_to_csv(base_results, "base_predictions.csv")
+        backtester.save_betting_results_to_csv(
+            base_results, "enhanced_betting_results.csv"
+        )
+        backtester.save_predictions_to_csv(base_results, "enhanced_predictions.csv")
+
+        return base_results
 
     except Exception as e:
-        print(f"Error running base backtest: {e}")
+        print(f"Error running enhanced backtest: {e}")
         import traceback
 
         traceback.print_exc()
+        return None
 
 
 def run_calibration_example():
@@ -1196,7 +1231,12 @@ def run_calibration_example():
     )
 
     backtest_config = BackTestConfig(
-        min_training_weeks=10, calibration_method="logistic", betting_threshold=0.02
+        min_training_weeks=10,
+        calibration_method="logistic",
+        betting_threshold=0.02,
+        min_edge=0.02,
+        min_prob=0.1,
+        max_odds=10.0,
     )
 
     backtester = ImprovedBacktester(backtest_config)
@@ -1206,7 +1246,7 @@ def run_calibration_example():
         return ZSDPoissonModel(config)
 
     print("\n" + "=" * 60)
-    print("Running Calibration Example...")
+    print("Running Calibration Example with BettingCalculator...")
     print("=" * 60)
     try:
         # Run backtest with calibration
@@ -1232,15 +1272,18 @@ def run_calibration_example():
                 results_calibrated["calibrated"], "calibrated_predictions.csv"
             )
 
+        return results_calibrated
+
     except Exception as e:
         print(f"Error running calibration example: {e}")
         import traceback
 
         traceback.print_exc()
+        return None
 
 
 def run_ppi_filtered_example():
-    """New example: running backtest with PPI-filtered strategy."""
+    """Example: running backtest with PPI-filtered strategy and BettingCalculator."""
 
     matches = pd.read_csv("historical_ppi_and_odds.csv", dtype={"Wk": int})
 
@@ -1265,6 +1308,9 @@ def run_ppi_filtered_example():
         betting_threshold=0.02,
         stake_size=1.0,
         ppi_filter_top_n=4,
+        min_edge=0.02,
+        min_prob=0.1,
+        max_odds=10.0,
     )
 
     backtester = ImprovedBacktester(backtest_config)
@@ -1274,7 +1320,7 @@ def run_ppi_filtered_example():
         return ZSDPoissonModel(config)
 
     print("\n" + "=" * 60)
-    print("Running PPI-Filtered Strategy Example...")
+    print("Running PPI-Filtered Strategy with BettingCalculator...")
     print("=" * 60)
     try:
         ppi_results = backtester.backtest_ppi_filtered_strategy(
@@ -1289,7 +1335,7 @@ def run_ppi_filtered_example():
 
         # Print results for the PPI-filtered strategy
         print("\n" + "=" * 60)
-        print("PPI-FILTERED STRATEGY RESULTS")
+        print("PPI-FILTERED STRATEGY RESULTS (with BettingCalculator)")
         print("=" * 60)
 
         metrics = ppi_results.metrics
@@ -1299,56 +1345,14 @@ def run_ppi_filtered_example():
         print(f"  Brier Score: {metrics.get('brier_score', 0):.4f}")
         print(f"  Total Predictions: {metrics.get('n_predictions', 0)}")
 
-        print(f"\nBetting Performance (PPI-Filtered Strategy):")
+        print(f"\nBetting Performance (PPI-Filtered with BettingCalculator):")
         print(f"  Total Bets: {metrics.get('total_bets', 0)}")
         print(f"  Total Profit: ${metrics.get('total_profit', 0):.2f}")
         print(f"  ROI: {metrics.get('roi_percent', 0):.2f}%")
         print(f"  Win Rate: {metrics.get('win_rate', 0):.1f}%")
         print(f"  Average Edge: {metrics.get('avg_edge', 0):.3f}")
-        print(
-            f"  Final Bankroll: ${ppi_results.metrics.get('final_bankroll', 100):.2f}"
-        )
-
-        # Show some sample predictions (from the filtered set)
-        if not ppi_results.predictions_df.empty:
-            print(f"\nSample Predictions (PPI-Filtered):")
-            display_cols = [
-                "Date",
-                "Home",
-                "Away",
-                "Model_Prob_H",
-                "Model_Prob_D",
-                "Model_Prob_A",
-                "Actual_Outcome",
-            ]
-            if "PPI_Diff" in ppi_results.predictions_df.columns:
-                display_cols.insert(3, "PPI_Diff")
-
-            print(
-                ppi_results.predictions_df[display_cols]
-                .sort_values("PPI_Diff" if "PPI_Diff" in display_cols else "Date")
-                .head(10)
-            )
-
-        # Show betting results if any
-        if ppi_results.betting_results:
-            betting_df = pd.DataFrame(
-                [
-                    {
-                        "Date": bet.date,
-                        "Match": f"{bet.home_team} vs {bet.away_team}",
-                        "Bet": bet.bet_type,
-                        "Stake": bet.stake,
-                        "Odds": bet.odds,
-                        "Profit": bet.profit,
-                        "Edge": bet.edge,
-                    }
-                    for bet in ppi_results.betting_results[:10]
-                ]
-            )
-
-            print(f"\nSample Bets (PPI-Filtered):")
-            print(betting_df)
+        print(f"  Average Expected Value: ${metrics.get('avg_expected_value', 0):.2f}")
+        print(f"  Final Bankroll: ${metrics.get('final_bankroll', 100):.2f}")
 
         # Save results to CSV
         backtester.save_betting_results_to_csv(
@@ -1356,103 +1360,24 @@ def run_ppi_filtered_example():
         )
         backtester.save_predictions_to_csv(ppi_results, "ppi_filtered_predictions.csv")
 
+        return ppi_results
+
     except Exception as e:
         print(f"Error running PPI-filtered example: {e}")
         import traceback
 
         traceback.print_exc()
-
-
-def simple_prediction_example():
-    """Simple example of using the model for predictions."""
-
-    # Load some historical data for training
-    matches = pd.read_csv("historical_ppi_and_odds.csv", dtype={"Wk": int})
-
-    # Filter to get training data (e.g., last season)
-    train_data = matches[
-        (matches["Season"] == "2023-2024") & (matches["League"] == "Premier-League")
-    ].copy()
-
-    if len(train_data) == 0:
-        print("No training data found")
-        return
-
-    # Configure and fit model
-    config = ModelConfig(
-        decay_rate=0.001,
-        l1_reg=0.0,
-        l2_reg=0.01,
-        team_reg=0.005,
-        auto_tune_regularization=False,
-    )
-    model = ZSDPoissonModel(config)
-
-    try:
-        model.fit(train_data)
-
-        # Make a prediction
-        home_team = train_data["Home"].iloc[0]
-        away_team = train_data["Away"].iloc[0]
-
-        # Use the backtester's prediction method for consistency
-        backtester = ImprovedBacktester()
-        prediction = backtester._get_match_prediction(model, home_team, away_team)
-
-        print(f"\nPrediction for {home_team} vs {away_team}:")
-        print(
-            f"  Expected Goals - Home: {prediction.lambda_home:.2f}, Away: {prediction.lambda_away:.2f}"
-        )
-        print(f"  Win Probabilities:")
-        print(f"    Home: {prediction.prob_home_win:.3f}")
-        print(f"    Draw: {prediction.prob_draw:.3f}")
-        print(f"    Away: {prediction.prob_away_win:.3f}")
-        print(
-            f"  Margin of Victory: {prediction.mov_prediction:.2f} ± {prediction.mov_std_error:.2f}"
-        )
-
-        # Show team ratings
-        if hasattr(model, "attack_ratings") and model.attack_ratings is not None:
-            ratings_data = []
-            for i, team in enumerate(model.teams):
-                ratings_data.append(
-                    {
-                        "Team": team,
-                        "Attack": model.attack_ratings[i],
-                        "Defense": model.defense_ratings[i],
-                        "Net_Rating": model.attack_ratings[i]
-                        - model.defense_ratings[i],
-                    }
-                )
-
-            ratings_df = pd.DataFrame(ratings_data).sort_values(
-                "Net_Rating", ascending=False
-            )
-            print(f"\nTop 5 Teams by Net Rating:")
-            print(ratings_df.head())
-
-        return model, prediction
-
-    except Exception as e:
-        print(f"Error in prediction example: {e}")
-        import traceback
-
-        traceback.print_exc()
-        return None, None
+        return None
 
 
 if __name__ == "__main__":
-    # print("Running simple prediction example...")
-    # simple_prediction_example()
-
-    print("\n" + "=" * 60)
-    print("Running backtest example (Base Model)...")
+    print("Running enhanced backtest example with BettingCalculator integration...")
     run_backtest_example()
 
-    # print("\n" + "=" * 60)
-    # print("Running calibration example...")
-    # run_calibration_example()
+    print("\n" + "=" * 60)
+    print("Running calibration example...")
+    run_calibration_example()
 
-    # print("\n" + "=" * 60)
-    # print("Running PPI-filtered strategy example...")
-    # run_ppi_filtered_example()
+    print("\n" + "=" * 60)
+    print("Running PPI-filtered strategy example...")
+    run_ppi_filtered_example()

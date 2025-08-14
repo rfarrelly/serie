@@ -116,17 +116,41 @@ class ModelManager:
         """Find the best configuration through backtesting."""
         best_config, best_score = None, float("inf")
 
-        backtest_config = BackTestConfig(
-            min_training_weeks=8, betting_threshold=0.02, stake_size=1.0
-        )
-        backtester = ImprovedBacktester(backtest_config)
-
         for i, params in enumerate(param_combinations):
             print(f"  Testing combination {i + 1}/{len(param_combinations)}: {params}")
 
+            # Create fresh backtester for each test - CRITICAL for independent results
+            backtest_config = BackTestConfig(
+                min_training_weeks=8, betting_threshold=0.02, stake_size=1.0
+            )
+            backtester = ImprovedBacktester(backtest_config)
+
             try:
-                test_config = ModelConfig(
-                    **{**self.config_manager.default_config.__dict__, **params}
+                # FIXED: Properly merge default config with parameter overrides
+                base_config_dict = {
+                    "decay_rate": self.config_manager.default_config.decay_rate,
+                    "max_goals": self.config_manager.default_config.max_goals,
+                    "eps": self.config_manager.default_config.eps,
+                    "lambda_bounds": self.config_manager.default_config.lambda_bounds,
+                    "param_bounds": self.config_manager.default_config.param_bounds,
+                    "min_matches_per_team": self.config_manager.default_config.min_matches_per_team,
+                    "l1_reg": self.config_manager.default_config.l1_reg,
+                    "l2_reg": self.config_manager.default_config.l2_reg,
+                    "team_reg": self.config_manager.default_config.team_reg,
+                    "shrink_to_mean": self.config_manager.default_config.shrink_to_mean,
+                    "auto_tune_regularization": self.config_manager.default_config.auto_tune_regularization,
+                    "cv_folds": self.config_manager.default_config.cv_folds,
+                    "n_optimization_starts": self.config_manager.default_config.n_optimization_starts,
+                    "max_iter": self.config_manager.default_config.max_iter,
+                }
+
+                # Override with test parameters
+                base_config_dict.update(params)
+                test_config = ModelConfig(**base_config_dict)
+
+                # DEBUG: Print the actual config being tested
+                print(
+                    f"    Testing config: l1={test_config.l1_reg}, l2={test_config.l2_reg}, team={test_config.team_reg}, decay={test_config.decay_rate}"
                 )
 
                 results = backtester.backtest_cross_season(
@@ -137,18 +161,78 @@ class ModelManager:
                     league=league,
                 )
 
+                # Additional diagnostics
+                self._diagnose_backtesting_results(results, params, i)
+
                 score = self._calculate_optimization_score(results)
 
                 if score < best_score:
                     best_score = score
                     best_config = test_config
                     self._save_best_results(results, league)
+                    print(f"    ✅ New best config found!")
+                else:
+                    print(f"    Score: {score:.4f} (not best)")
 
             except Exception as e:
                 print(f"    Error testing parameters: {e}")
+                import traceback
+
+                traceback.print_exc()
                 continue
 
+        print(f"\n🏆 Best configuration for {league}:")
+        if best_config:
+            print(f"   l1_reg: {best_config.l1_reg}")
+            print(f"   l2_reg: {best_config.l2_reg}")
+            print(f"   team_reg: {best_config.team_reg}")
+            print(f"   decay_rate: {best_config.decay_rate}")
+            print(f"   Best score: {best_score:.4f}")
+
         return best_config or self.config_manager.default_config
+
+    def _diagnose_backtesting_results(self, results, params, run_index):
+        """Diagnostic checks for backtesting logic."""
+        print(f"    📊 Diagnostics for run {run_index + 1}:")
+
+        if len(results.predictions_df) > 0:
+            # Check prediction variability
+            avg_probs = [
+                results.predictions_df["Model_Prob_H"].mean(),
+                results.predictions_df["Model_Prob_D"].mean(),
+                results.predictions_df["Model_Prob_A"].mean(),
+            ]
+            print(
+                f"      Avg model probs: H={avg_probs[0]:.3f}, D={avg_probs[1]:.3f}, A={avg_probs[2]:.3f}"
+            )
+
+            # Check odds availability
+            b365_available = (
+                (~results.predictions_df[["B365H", "B365D", "B365A"]].isnull())
+                .all(axis=1)
+                .sum()
+            )
+            ps_available = (
+                (~results.predictions_df[["PSH", "PSD", "PSA"]].isnull())
+                .all(axis=1)
+                .sum()
+            )
+            print(
+                f"      Complete odds: B365={b365_available}/{len(results.predictions_df)}, PS={ps_available}/{len(results.predictions_df)}"
+            )
+
+            # Check betting details
+            n_bets = len(results.betting_results)
+            if n_bets > 0:
+                edges = [bet.edge for bet in results.betting_results]
+                odds_used = [bet.odds for bet in results.betting_results]
+                print(
+                    f"      Betting: {n_bets} bets, edge range [{min(edges):.4f}, {max(edges):.4f}], odds range [{min(odds_used):.2f}, {max(odds_used):.2f}]"
+                )
+            else:
+                print(f"      Betting: No bets placed (threshold={0.02})")
+        else:
+            print(f"      ⚠️  No predictions generated!")
 
     def _calculate_optimization_score(self, results) -> float:
         """Calculate optimization score from backtest results."""
@@ -166,8 +250,6 @@ class ModelManager:
 
     def _save_best_results(self, results, league: str):
         """Save best optimization results."""
-        backtester = ImprovedBacktester(BackTestConfig())
-
         # Create directories if they don't exist
         Path("optimisation_validation/betting_results").mkdir(
             parents=True, exist_ok=True
@@ -176,11 +258,14 @@ class ModelManager:
             parents=True, exist_ok=True
         )
 
-        backtester.save_betting_results_to_csv(
+        # Create a fresh backtester just for saving (to avoid any state issues)
+        save_backtester = ImprovedBacktester(BackTestConfig())
+
+        save_backtester.save_betting_results_to_csv(
             results,
             f"optimisation_validation/betting_results/{league}_best_betting_results.csv",
         )
-        backtester.save_predictions_to_csv(
+        save_backtester.save_predictions_to_csv(
             results,
             f"optimisation_validation/prediction_results/{league}_best_predictions.csv",
         )
