@@ -98,40 +98,6 @@ class LeagueProcessor:
         candidates_df = pd.DataFrame(candidates)
         return candidates_df.to_dict(orient="records")
 
-    # def get_zsd_poisson(self):
-    #     fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
-
-    #     model = RegularizedZSDPoissonModel(played_matches=self.played_matches_df)
-
-    #     results = []
-
-    #     for fixture in fixtures.itertuples(index=False):
-    #         week, date, home_team, away_team = (
-    #             fixture.Wk,
-    #             fixture.Date,
-    #             fixture.Home,
-    #             fixture.Away,
-    #         )
-
-    #         result = {}
-    #         # Add fixture metadata
-    #         result["Wk"] = week
-    #         result["Date"] = date
-    #         result["Home"] = home_team
-    #         result["Away"] = away_team
-
-    #         # Core predictions from the model
-    #         pred_result = model.predict_match(
-    #             home_team=home_team, away_team=away_team, max_goals=15
-    #         )
-
-    #         result |= pred_result
-
-    #         results.append(result)
-
-    #     preds_df = pd.DataFrame(results)
-    #     return preds_df.to_dict(orient="records")
-
 
 def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
     print("Processing historical PPI")
