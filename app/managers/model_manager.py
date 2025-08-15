@@ -340,4 +340,35 @@ class ModelManager:
             if col in match.index:
                 pred_dict[col] = match[col]
 
+        # NEW: Add betting analysis if odds are available
+        pred_series = pd.Series(pred_dict)
+        betting_metrics = self.betting_calculator.analyze_prediction(pred_series)
+
+        if betting_metrics:
+            # Add betting metrics to prediction
+            betting_dict = self.betting_calculator._metrics_to_dict(betting_metrics)
+            pred_dict.update(betting_dict)
+        else:
+            # Add default values if no betting analysis possible
+            pred_dict.update(
+                {
+                    "Bet_Type": None,
+                    "Edge": 0.0,
+                    "Model_Prob": 0.0,
+                    "Market_Prob": 0.0,
+                    "Market_Odds": 0.0,
+                    "Soft_Odds": 0.0,
+                    "Fair_Odds_Selected": 0.0,
+                    "EV_H": 0.0,
+                    "EV_D": 0.0,
+                    "EV_A": 0.0,
+                    "Prob_Edge_H": 0.0,
+                    "Prob_Edge_D": 0.0,
+                    "Prob_Edge_A": 0.0,
+                    "Kelly_H": 0.0,
+                    "Kelly_D": 0.0,
+                    "Kelly_A": 0.0,
+                }
+            )
+
         return pred_dict

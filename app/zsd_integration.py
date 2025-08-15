@@ -32,7 +32,7 @@ class ZSDIntegratedProcessor:
         """Optimize parameters for all leagues with sufficient data."""
         print("Starting parameter optimization for all leagues...")
 
-        for league in ["Belgian-Pro-League"]:  # historical_data["League"].unique():
+        for league in historical_data["League"].unique():
             league_data = historical_data[historical_data["League"] == league]
 
             if len(league_data) > 179 and self.should_reoptimize_parameters(league):
@@ -48,7 +48,7 @@ class ZSDIntegratedProcessor:
         """Fit ZSD models for all leagues."""
         print("Fitting ZSD models for all leagues...")
 
-        for league in ["Belgian-Pro-League"]:  # historical_data["League"].unique():
+        for league in historical_data["League"].unique():
             self.model_manager.fit_league_model(historical_data, league)
 
     def get_zsd_predictions(self, fixtures_df: pd.DataFrame) -> List[Dict]:
@@ -56,34 +56,36 @@ class ZSDIntegratedProcessor:
         if len(fixtures_df) == 0:
             return []
 
-        # Generate predictions
+        # Generate predictions (now includes betting analysis)
         predictions_df = self.model_manager.predict_matches(fixtures_df)
         if len(predictions_df) == 0:
             return []
 
-        # Find betting candidates
-        betting_candidates = self.betting_calculator.find_betting_candidates(
-            predictions_df
-        )
-        filtered_candidates = self.betting_filter.filter_candidates(betting_candidates)
-
         print(f"Generated {len(predictions_df)} ZSD predictions")
-        print(f"Found {len(filtered_candidates)} betting candidates")
 
-        # Convert to list of dicts and add betting flag
+        # Convert to list of dicts
         all_predictions = predictions_df.to_dict("records")
-        candidate_matches = (
-            {
-                f"{pred['Date']}_{pred['Home']}_{pred['Away']}"
-                for _, pred in filtered_candidates.iterrows()
-            }
-            if len(filtered_candidates) > 0
-            else set()
-        )
 
+        # Identify betting candidates based on edge threshold
+        betting_candidates = []
         for prediction in all_predictions:
-            match_id = f"{prediction['Date']}_{prediction['Home']}_{prediction['Away']}"
-            prediction["Is_Betting_Candidate"] = match_id in candidate_matches
+            edge = prediction.get("Edge", 0.0)
+            model_prob = prediction.get("Model_Prob", 0.0)
+            soft_odds = prediction.get("Soft_Odds", 0.0)
+
+            # Apply betting filter criteria
+            is_candidate = (
+                edge >= self.betting_filter.min_edge
+                and model_prob >= self.betting_filter.min_prob
+                and 0 < soft_odds <= self.betting_filter.max_odds
+            )
+
+            prediction["Is_Betting_Candidate"] = is_candidate
+
+            if is_candidate:
+                betting_candidates.append(prediction)
+
+        print(f"Found {len(betting_candidates)} betting candidates")
 
         return all_predictions
 
