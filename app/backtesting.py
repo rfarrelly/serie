@@ -6,12 +6,12 @@ import numpy as np
 import pandas as pd
 from analysis.betting import BettingCalculator, BettingFilter
 from models.core import ModelConfig
+from models.zsd_model import ZSDPoissonModel
 from scipy.stats import poisson
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, log_loss
 from sklearn.preprocessing import StandardScaler
 from utils.odds_helpers import get_no_vig_odds_multiway
-from zsd_poisson_model import ZSDPoissonModel
 
 warnings.filterwarnings("ignore")
 
