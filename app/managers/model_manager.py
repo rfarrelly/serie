@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 
 import pandas as pd
 from analysis.betting import BettingCalculator
-from backtesting import BackTestConfig, ImprovedBacktester
+from backtesting import BackTestConfig, Backtester
 from models.core import ModelConfig
 from models.zsd_model import ZSDPoissonModel
 from utils.config_manager import ConfigManager
@@ -123,7 +123,7 @@ class ModelManager:
             backtest_config = BackTestConfig(
                 min_training_weeks=8, betting_threshold=0.02, stake_size=1.0
             )
-            backtester = ImprovedBacktester(backtest_config)
+            backtester = Backtester(backtest_config)
 
             try:
                 # FIXED: Properly merge default config with parameter overrides
@@ -259,7 +259,7 @@ class ModelManager:
         )
 
         # Create a fresh backtester just for saving (to avoid any state issues)
-        save_backtester = ImprovedBacktester(BackTestConfig())
+        save_backtester = Backtester(BackTestConfig())
 
         save_backtester.save_betting_results_to_csv(
             results,

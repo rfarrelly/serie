@@ -244,7 +244,7 @@ class ProbabilityCalibrator:
         return X
 
 
-class ImprovedBacktester:
+class Backtester:
     """Improved backtesting framework with BettingCalculator integration."""
 
     def __init__(self, config: Optional[BackTestConfig] = None):
@@ -1113,7 +1113,7 @@ def run_backtest_example():
     )
 
     # Create backtester
-    backtester = ImprovedBacktester(backtest_config)
+    backtester = Backtester(backtest_config)
 
     # Updated model factory function
     def ZSDPoissonModelWithConfig(**kwargs):
@@ -1239,7 +1239,7 @@ def run_calibration_example():
         max_odds=10.0,
     )
 
-    backtester = ImprovedBacktester(backtest_config)
+    backtester = Backtester(backtest_config)
 
     def ZSDPoissonModelWithConfig(**kwargs):
         config = kwargs.get("config", model_config)
@@ -1313,7 +1313,7 @@ def run_ppi_filtered_example():
         max_odds=10.0,
     )
 
-    backtester = ImprovedBacktester(backtest_config)
+    backtester = Backtester(backtest_config)
 
     def ZSDPoissonModelWithConfig(**kwargs):
         config = kwargs.get("config", model_config)
