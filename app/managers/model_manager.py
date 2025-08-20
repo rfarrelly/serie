@@ -52,7 +52,15 @@ class ModelManager:
         """Fit a ZSD Poisson model for a specific league."""
         print(f"Fitting ZSD model for {league}...")
 
-        league_data = historical_data[historical_data["League"] == league].copy()
+        league_data = historical_data[
+            (historical_data["League"] == league)
+            & historical_data["Season"].isin(
+                [
+                    self.global_config.current_season,
+                    self.global_config.previous_season,
+                ]
+            )
+        ].copy()
         league_data = league_data.sort_values("Date").reset_index(drop=True)
 
         if len(league_data) < min_training_matches:
