@@ -184,7 +184,5 @@ TODAY = datetime.now().date()
 TIME_DELTA = int(env_values.get("TIME_DELTA"))
 END_DATE = TODAY + timedelta(days=TIME_DELTA)
 
-GET_DATA = env_values.get("GET_DATA")
-
 # Default app configuration
 DEFAULT_CONFIG = AppConfig()
