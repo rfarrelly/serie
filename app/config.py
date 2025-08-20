@@ -158,7 +158,6 @@ class AppConfig:
         # Optional season for manual data retrieval
         self.current_season: str = season or env_values.get("CURRENT_SEASON")
         self.previous_season: str = env_values.get("PREVIOUS_SEASON")
-        self.ppi_diff_threshold: float = float(env_values.get("PPI_DIFF_THRESHOLD"))
         self.data_dir: Path = Path(env_values.get("DATA_DIR"))
 
     @property
