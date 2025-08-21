@@ -16,6 +16,7 @@ wheels/
 
 # Custom files and folders
 DATA
+optimisation_validation
 zsd_configs
 temp.py
 zsd_validation_report.html
