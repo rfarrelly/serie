@@ -516,85 +516,6 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
-    def run_full_pipeline(self) -> bool:
-        """Run the complete betting pipeline."""
-
-        print(
-            f"{'=' * 60}\r\nSTARTING BETTING PIPELINE WITH ZSD INTEGRATION\r\n{'=' * 60}\r\n"
-        )
-
-        # Show initial status
-        self.pipeline_config.print_status_report()
-
-        success_steps = 0
-        total_steps = 5
-
-        # Step 1: Check if parameter optimization is needed
-        print(f"{'=' * 60}\r\nSTEP 1: PARAMETER OPTIMIZATION CHECK\r\n{'=' * 60}\r\n")
-
-        if self.pipeline_config.check_zsd_optimization_needed():
-            print("Parameter optimization needed - running now...")
-            if self.run_parameter_optimization():
-                success_steps += 1
-                print("✅ Parameter optimization completed")
-            else:
-                print("❌ Parameter optimization failed, continuing with defaults")
-        else:
-            print("✅ Parameter optimization not needed (configs are recent)")
-            success_steps += 1
-
-        # Step 2: Generate latest PPI predictions
-        print(f"{'=' * 60}\r\nSTEP 2: LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
-
-        if self.run_latest_ppi():
-            success_steps += 1
-            print("✅ Latest PPI predictions completed")
-        else:
-            print("❌ Latest PPI predictions failed")
-            return False  # Can't continue without PPI data
-
-        # Step 3: Run ZSD predictions
-        print(f"{'=' * 60}\r\nSTEP 3: ZSD PREDICTIONS\r\n{'=' * 60}\r\n")
-
-        if self.run_zsd_predictions():
-            success_steps += 1
-            print("✅ ZSD predictions completed")
-        else:
-            print("❌ ZSD predictions failed")
-
-        # Step 4: Compare methods
-        print(f"{'=' * 60}\r\nSTEP 4: METHOD COMPARISON\r\n{'=' * 60}\r\n")
-
-        try:
-            self.compare_prediction_methods()
-            success_steps += 1
-            print("✅ Method comparison completed")
-        except Exception as e:
-            print(f"❌ Method comparison failed: {e}")
-
-        # Step 5: Final summary
-        print(f"{'=' * 60}\r\nSTEP 5: PIPELINE SUMMARY\r\n{'=' * 60}\r\n")
-
-        success_rate = success_steps / total_steps * 100
-        print(
-            f"Pipeline completed: {success_steps}/{total_steps} steps successful ({success_rate:.0f}%)"
-        )
-
-        # List generated files
-        output_files = []
-        for name, path in self.pipeline_config.output_files.items():
-            if Path(path).exists():
-                file_size = Path(path).stat().st_size / 1024  # KB
-                output_files.append(f"{path} ({file_size:.1f}KB)")
-
-        if output_files:
-            print(f"\nGenerated files:")
-            for file_info in output_files:
-                print(f"  - {file_info}")
-
-        success_steps += 1
-        return success_steps >= 4  # Consider successful if most steps completed
-
 
 def main():
     """Main entry point for the betting pipeline."""
@@ -644,19 +565,12 @@ def main():
         elif mode == "predict":
             pipeline.run_zsd_predictions()
 
-        elif mode == "full":
-            pipeline.run_full_pipeline()
-
         elif mode == "compare":
             pipeline.compare_prediction_methods()
 
         else:
             print(f"Unknown mode: {mode}")
             print_pipeline_help()
-
-    else:
-        # Default to full pipeline
-        pipeline.run_full_pipeline()
 
 
 if __name__ == "__main__":
