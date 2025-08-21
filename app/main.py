@@ -378,90 +378,6 @@ class BettingPipeline:
             print(f"\nBy League:")
             print(league_summary)
 
-    def compare_prediction_methods(self):
-        """Compare different prediction methods."""
-
-        print(f"{'=' * 60}\r\nCOMPARING PREDICTION METHODS\r\n{'=' * 60}\r\n")
-
-        files_to_compare = {
-            "PPI": "latest_ppi.csv",
-            "Basic ZSD": "latest_zsd.csv",
-            "Enhanced ZSD": "latest_zsd_enhanced.csv",
-        }
-
-        comparison_summary = {}
-
-        for method, filename in files_to_compare.items():
-            try:
-                if not Path(filename).exists():
-                    print(f"Warning: {filename} not found")
-                    comparison_summary[method] = {
-                        "total_predictions": 0,
-                        "betting_candidates": 0,
-                        "status": "File not found",
-                    }
-                    continue
-
-                df = pd.read_csv(filename)
-
-                if method == "Enhanced ZSD":
-                    n_candidates = len(
-                        df[df.get("Is_Betting_Candidate", False) == True]
-                    )
-                    # Show prediction method breakdown if enhanced
-                    if len(df) > 0 and "Poisson_Prob_H" in df.columns:
-                        avg_poisson_home = df["Poisson_Prob_H"].mean()
-                        avg_zip_home = df["ZIP_Prob_H"].mean()
-                        avg_mov_home = df.get("MOV_Prob_H", pd.Series([0])).mean()
-                        comparison_summary[method] = {
-                            "total_predictions": len(df),
-                            "betting_candidates": n_candidates,
-                            "avg_poisson_home": avg_poisson_home,
-                            "avg_zip_home": avg_zip_home,
-                            "avg_mov_home": avg_mov_home,
-                            "status": "Success",
-                        }
-                    else:
-                        comparison_summary[method] = {
-                            "total_predictions": len(df),
-                            "betting_candidates": n_candidates,
-                            "status": "Success",
-                        }
-                else:
-                    # Assume all are candidates for PPI/basic ZSD
-                    n_candidates = len(df)
-                    comparison_summary[method] = {
-                        "total_predictions": len(df),
-                        "betting_candidates": n_candidates,
-                        "status": "Success",
-                    }
-
-            except Exception as e:
-                print(f"Error reading {filename}: {e}")
-                comparison_summary[method] = {
-                    "total_predictions": 0,
-                    "betting_candidates": 0,
-                    "status": f"Error: {e}",
-                }
-
-        print("Method Comparison:")
-        for method, stats in comparison_summary.items():
-            status = stats.get("status", "Success")
-            if status == "Success":
-                print(
-                    f"  {method}: {stats['total_predictions']} predictions, "
-                    f"{stats['betting_candidates']} candidates"
-                )
-                if "avg_poisson_home" in stats:
-                    print(
-                        f"    Avg Home Win Probs - Poisson: {stats['avg_poisson_home']:.3f}, "
-                        f"ZIP: {stats['avg_zip_home']:.3f}, MOV: {stats['avg_mov_home']:.3f}"
-                    )
-            else:
-                print(f"  {method}: {status}")
-
-        return comparison_summary
-
     def run_backtest_validation(self, betting_csv, predictions_csv):
         """Run comprehensive backtest validation."""
         print("Running comprehensive backtest validation...")
@@ -564,9 +480,6 @@ def main():
 
         elif mode == "predict":
             pipeline.run_zsd_predictions()
-
-        elif mode == "compare":
-            pipeline.compare_prediction_methods()
 
         else:
             print(f"Unknown mode: {mode}")
