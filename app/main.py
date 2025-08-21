@@ -615,8 +615,7 @@ def main():
                 season = sys.argv[2]
                 pipeline.run_get_data(season)
             else:
-                print("Usage: python main.py get_data <season>")
-                print("Example: python main.py get_data 2023-24")
+                print("Usage: uv run app/main.py get_data <season>")
 
         elif mode == "latest_ppi":
             pipeline.run_latest_ppi()
@@ -639,12 +638,7 @@ def main():
                 pipeline.run_backtest_validation(betting_filename, prediction_filename)
             else:
                 print(
-                    "Usage: python main.py validate <betting_file> <predictions_file>"
-                )
-                print(
-                    "Example: python main.py validate "
-                    "optimisation_validation/betting_results/Premier-League_best_betting_results.csv "
-                    "optimisation_validation/prediction_results/Premier-League_best_predictions.csv"
+                    "Usage: uv run app/main.py validate <betting_file> <predictions_file>"
                 )
 
         elif mode == "predict":
