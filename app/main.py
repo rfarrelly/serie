@@ -631,9 +631,11 @@ def main():
             pipeline.run_parameter_optimization()
 
         elif mode == "validate":
+            betting_results_directory = "optimisation_validation/betting_results"
+            prediction_results_directory = "optimisation_validation/prediction_results"
             if len(sys.argv) > 3:
-                betting_filename = sys.argv[2]
-                prediction_filename = sys.argv[3]
+                betting_filename = f"{betting_results_directory}/{sys.argv[2]}"
+                prediction_filename = f"{prediction_results_directory}/{sys.argv[3]}"
                 pipeline.run_backtest_validation(betting_filename, prediction_filename)
             else:
                 print(
