@@ -47,10 +47,7 @@ class BettingPipeline:
         """Generate ZSD predictions with enhanced features."""
         if not self._validate_mode("predict"):
             return False
-
-        print("=" * 60)
-        print("RUNNING ENHANCED ZSD PREDICTIONS")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nRUNNING ENHANCED ZSD PREDICTIONS\r\n{'=' * 60}\r\n")
 
         try:
             # Load fixtures data
@@ -141,9 +138,7 @@ class BettingPipeline:
         if not self._validate_mode("optimize"):
             return False
 
-        print("=" * 60)
-        print("RUNNING ZSD PARAMETER OPTIMIZATION")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nRUNNING ZSD PARAMETER OPTIMIZATION\r\n{'=' * 60}\r\n")
 
         try:
             # Check if historical data exists
@@ -209,9 +204,7 @@ class BettingPipeline:
         if not self._validate_mode("latest_ppi"):
             return False
 
-        print("=" * 60)
-        print("GENERATING LATEST PPI PREDICTIONS")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nGENERATING LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
 
         ppi_all_leagues = []
         failed_leagues = []
@@ -264,9 +257,7 @@ class BettingPipeline:
         if not self._validate_mode("historical_ppi"):
             return False
 
-        print("=" * 60)
-        print("GENERATING HISTORICAL PPI DATA")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nGENERATING HISTORICAL PPI DATA\r\n{'=' * 60}\r\n")
 
         try:
             historical_ppi = get_historical_ppi(self.pipeline_config.base_config)
@@ -389,9 +380,8 @@ class BettingPipeline:
 
     def compare_prediction_methods(self):
         """Compare different prediction methods."""
-        print("=" * 60)
-        print("COMPARING PREDICTION METHODS")
-        print("=" * 60)
+
+        print(f"{'=' * 60}\r\nCOMPARING PREDICTION METHODS\r\n{'=' * 60}\r\n")
 
         files_to_compare = {
             "PPI": "latest_ppi.csv",
@@ -501,9 +491,7 @@ class BettingPipeline:
             manual_bet_inspection_helper(betting_csv, n_samples=50)
 
             # 3. Additional validation checks
-            print(f"\n" + "=" * 60)
-            print("ADDITIONAL VALIDATION CHECKS")
-            print("=" * 60)
+            print(f"{'=' * 60}\r\nADDITIONAL VALIDATION CHECKS\r\n{'=' * 60}\r\n")
 
             # Market efficiency check
             analyze_market_efficiency_violations(betting_csv)
@@ -512,9 +500,7 @@ class BettingPipeline:
             benchmark_against_random_betting(betting_csv)
 
             # Cross-validation note
-            print(f"\n" + "=" * 60)
-            print("RECOMMENDED ADDITIONAL CHECKS")
-            print("=" * 60)
+            print(f"{'=' * 60}\r\nRECOMMENDED ADDITIONAL CHECKS\r\n{'=' * 60}\r\n")
             print("1. Run backtest on different time periods")
             print("2. Test on different leagues separately")
             print("3. Use walk-forward validation")
@@ -532,9 +518,10 @@ class BettingPipeline:
 
     def run_full_pipeline(self) -> bool:
         """Run the complete betting pipeline."""
-        print("=" * 60)
-        print("STARTING BETTING PIPELINE WITH ZSD INTEGRATION")
-        print("=" * 60)
+
+        print(
+            f"{'=' * 60}\r\nSTARTING BETTING PIPELINE WITH ZSD INTEGRATION\r\n{'=' * 60}\r\n"
+        )
 
         # Show initial status
         self.pipeline_config.print_status_report()
@@ -543,9 +530,7 @@ class BettingPipeline:
         total_steps = 5
 
         # Step 1: Check if parameter optimization is needed
-        print("\n" + "=" * 60)
-        print("STEP 1: PARAMETER OPTIMIZATION CHECK")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nSTEP 1: PARAMETER OPTIMIZATION CHECK\r\n{'=' * 60}\r\n")
 
         if self.pipeline_config.check_zsd_optimization_needed():
             print("Parameter optimization needed - running now...")
@@ -559,9 +544,7 @@ class BettingPipeline:
             success_steps += 1
 
         # Step 2: Generate latest PPI predictions
-        print("\n" + "=" * 60)
-        print("STEP 2: LATEST PPI PREDICTIONS")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nSTEP 2: LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
 
         if self.run_latest_ppi():
             success_steps += 1
@@ -571,9 +554,7 @@ class BettingPipeline:
             return False  # Can't continue without PPI data
 
         # Step 3: Run ZSD predictions
-        print("\n" + "=" * 60)
-        print("STEP 3: ZSD PREDICTIONS")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nSTEP 3: ZSD PREDICTIONS\r\n{'=' * 60}\r\n")
 
         if self.run_zsd_predictions():
             success_steps += 1
@@ -582,9 +563,7 @@ class BettingPipeline:
             print("❌ ZSD predictions failed")
 
         # Step 4: Compare methods
-        print("\n" + "=" * 60)
-        print("STEP 4: METHOD COMPARISON")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nSTEP 4: METHOD COMPARISON\r\n{'=' * 60}\r\n")
 
         try:
             self.compare_prediction_methods()
@@ -594,9 +573,7 @@ class BettingPipeline:
             print(f"❌ Method comparison failed: {e}")
 
         # Step 5: Final summary
-        print("\n" + "=" * 60)
-        print("STEP 5: PIPELINE SUMMARY")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nSTEP 5: PIPELINE SUMMARY\r\n{'=' * 60}\r\n")
 
         success_rate = success_steps / total_steps * 100
         print(

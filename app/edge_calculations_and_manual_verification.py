@@ -11,9 +11,7 @@ from utils.odds_helpers import get_no_vig_odds_multiway
 def manual_edge_calculation_example():
     """Demonstrate edge calculation with step-by-step breakdown."""
 
-    print("=" * 80)
-    print("MANUAL EDGE CALCULATION EXAMPLE")
-    print("=" * 80)
+    print(f"{'=' * 60}\r\nMANUAL EDGE CALCULATION EXAMPLE\r\n{'=' * 60}\r\n")
 
     # Example match: Arsenal vs Chelsea
     print("Match: Arsenal vs Chelsea")
@@ -120,9 +118,7 @@ def manual_edge_calculation_example():
 def test_edge_calculation_scenarios():
     """Test various edge calculation scenarios."""
 
-    print("\n" + "=" * 80)
-    print("EDGE CALCULATION SCENARIO TESTS")
-    print("=" * 80)
+    print(f"{'=' * 60}\r\nEDGE CALCULATION SCENARIO TESTS\r\n{'=' * 60}\r\n")
 
     scenarios = [
         {
@@ -219,9 +215,7 @@ def test_edge_calculation_scenarios():
 def validate_probability_conservation():
     """Verify that probabilities sum to 1 throughout calculations."""
 
-    print("\n" + "=" * 80)
-    print("PROBABILITY CONSERVATION VALIDATION")
-    print("=" * 80)
+    print(f"{'=' * 60}\r\nPROBABILITY CONSERVATION VALIDATION\r\n{'=' * 60}\r\n")
 
     # Test data
     poisson_probs = [0.45, 0.30, 0.25]
@@ -278,10 +272,7 @@ def validate_probability_conservation():
 def manual_calculation_verification():
     """Manual step-by-step calculation for verification."""
 
-    print("\n" + "=" * 80)
-    print("MANUAL CALCULATION VERIFICATION")
-    print("=" * 80)
-
+    print(f"{'=' * 60}\r\nMANUAL CALCULATION VERIFICATION\r\n{'=' * 60}\r\n")
     print("Working through a specific example step by step...")
     print("Match: Liverpool vs Manchester United")
     print("-" * 50)
@@ -388,9 +379,7 @@ def manual_calculation_verification():
 def compare_with_zsd_implementation():
     """Compare manual calculations with ZSD implementation."""
 
-    print("\n" + "=" * 80)
-    print("COMPARISON WITH ZSD IMPLEMENTATION")
-    print("=" * 80)
+    print(f"{'=' * 60}\r\nCOMPARISON WITH ZSD IMPLEMENTATION\r\n{'=' * 60}\r\n")
 
     # This would compare with actual ZSD implementation
     # For now, we'll simulate the comparison
@@ -409,8 +398,7 @@ def compare_with_zsd_implementation():
 def run_all_verifications():
     """Run all verification tests."""
 
-    print("RUNNING ALL EDGE CALCULATION VERIFICATIONS")
-    print("=" * 80)
+    print(f"{'=' * 60}\r\RUNNING ALL EDGE CALCULATION VERIFICATIONS\r\n{'=' * 60}\r\n")
 
     # Run all verification functions
     try:
@@ -429,9 +417,9 @@ def run_all_verifications():
         compare_with_zsd_implementation()
         print("✅ ZSD implementation comparison completed")
 
-        print("\n" + "=" * 80)
-        print("ALL VERIFICATIONS COMPLETED SUCCESSFULLY")
-        print("=" * 80)
+        print(
+            f"{'=' * 60}\r\ALL VERIFICATIONS COMPLETED SUCCESSFULLY\r\n{'=' * 60}\r\n"
+        )
 
         return True, {
             "manual_example": manual_results,

@@ -42,9 +42,8 @@ class BacktestValidator:
             predictions_csv: Path to CSV with all predictions
             historical_data_csv: Path to original historical data
         """
-        print("=" * 60)
-        print("COMPREHENSIVE BACKTEST VALIDATION")
-        print("=" * 60)
+
+        print(f"{'=' * 60}\r\nCOMPREHENSIVE BACKTEST VALIDATION\r\n{'=' * 60}\r\n")
 
         league_name = self._extract_league_name(betting_results_csv)
         test_season = config.base_config.current_season
@@ -141,9 +140,7 @@ class BacktestValidator:
         is_valid = confidence_score > 0.7 and len(red_flags) == 0
 
         # Print summary
-        print("\n" + "=" * 60)
-        print("VALIDATION SUMMARY")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nVALIDATION SUMMARY\r\n{'=' * 60}\r\n")
         print(f"Overall Valid: {is_valid}")
         print(f"Confidence Score: {confidence_score:.2f}/1.0")
         print(f"Red Flags: {len(red_flags)}")
@@ -793,9 +790,8 @@ def manual_bet_inspection_helper(betting_csv_path: str, n_samples: int = 50):
 
 def cross_validate_with_different_seeds():
     """Run backtest with different random seeds to check stability."""
-    print("=" * 60)
-    print("CROSS-VALIDATION WITH DIFFERENT SEEDS")
-    print("=" * 60)
+
+    print(f"{'=' * 60}\r\nCROSS-VALIDATION WITH DIFFERENT SEEDS\r\n{'=' * 60}\r\n")
 
     # This would require modifying your backtesting code to accept random seeds
     # and running the same backtest multiple times
@@ -816,9 +812,8 @@ def cross_validate_with_different_seeds():
 
 def benchmark_against_random_betting(betting_csv):
     """Compare your results against random betting baseline."""
-    print("=" * 60)
-    print("RANDOM BETTING BENCHMARK")
-    print("=" * 60)
+
+    print(f"{'=' * 60}\r\nRANDOM BETTING BENCHMARK\r\n{'=' * 60}\r\n")
 
     try:
         betting_df = pd.read_csv(betting_csv)
@@ -878,9 +873,8 @@ def benchmark_against_random_betting(betting_csv):
 
 def analyze_market_efficiency_violations(betting_csv):
     """Check if your edges are realistic given market efficiency."""
-    print("=" * 60)
-    print("MARKET EFFICIENCY ANALYSIS")
-    print("=" * 60)
+
+    print(f"{'=' * 60}\r\nMARKET EFFICIENCY ANALYSIS\r\n{'=' * 60}\r\n")
 
     try:
         betting_df = pd.read_csv(betting_csv)
@@ -955,9 +949,7 @@ if __name__ == "__main__":
         print("Betting results file not found - run backtest first")
 
     # 3. Additional validation checks
-    print(f"\n" + "=" * 60)
-    print("ADDITIONAL VALIDATION CHECKS")
-    print("=" * 60)
+    print(f"{'=' * 60}\r\nADDITIONAL VALIDATION CHECKS\r\n{'=' * 60}\r\n")
 
     # Market efficiency check
     analyze_market_efficiency_violations()
@@ -966,9 +958,7 @@ if __name__ == "__main__":
     benchmark_against_random_betting()
 
     # Cross-validation note
-    print(f"\n" + "=" * 60)
-    print("RECOMMENDED ADDITIONAL CHECKS")
-    print("=" * 60)
+    print(f"{'=' * 60}\r\nRECOMMENDED ADDITIONAL CHECKS\r\n{'=' * 60}\r\n")
     print("1. Run backtest on different time periods")
     print("2. Test on different leagues separately")
     print("3. Use walk-forward validation")

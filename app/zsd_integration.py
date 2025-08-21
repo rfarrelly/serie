@@ -171,6 +171,5 @@ def run_daily_prediction_example():
 if __name__ == "__main__":
     print("Running parameter optimization example...")
     run_parameter_optimization_example()
-    print("\n" + "=" * 50)
-    print("Running daily prediction example...")
+    print(f"{'=' * 60}\r\nRunning daily prediction example...\r\n{'=' * 60}\r\n")
     run_daily_prediction_example()

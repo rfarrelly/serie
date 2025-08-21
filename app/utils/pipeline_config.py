@@ -163,9 +163,7 @@ class PipelineConfig:
         """Print a comprehensive status report."""
         status = self.get_pipeline_status()
 
-        print("=" * 60)
-        print("BETTING PIPELINE STATUS REPORT")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nBETTING PIPELINE STATUS REPORT\r\n{'=' * 60}\r\n")
         print(f"Generated: {status['timestamp']}")
 
         # Data directories
@@ -291,9 +289,7 @@ def print_pipeline_help():
     """Print comprehensive help for pipeline usage."""
     validator = PipelineModeValidator(PipelineConfig())
 
-    print("=" * 60)
-    print("BETTING PIPELINE USAGE GUIDE")
-    print("=" * 60)
+    print(f"{'=' * 60}\r\nBETTING PIPELINE USAGE GUIDE\r\n{'=' * 60}\r\n")
 
     print("Available modes:")
     modes = [

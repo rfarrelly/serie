@@ -1033,9 +1033,7 @@ class Backtester:
 
     def print_results_summary(self, results: Dict[str, BackTestResults]):
         """Print a formatted summary of backtest results."""
-        print("\n" + "=" * 60)
-        print("BACKTEST RESULTS SUMMARY")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nBACKTEST RESULTS SUMMARY\r\n{'=' * 60}\r\n")
 
         for method, result in results.items():
             print(f"\n{method.upper()} MODEL RESULTS:")
@@ -1121,9 +1119,9 @@ def run_backtest_example():
         return ZSDPoissonModel(config)
 
     # Run base backtest
-    print("\n" + "=" * 60)
-    print("Running Enhanced Backtest with BettingCalculator...")
-    print("=" * 60)
+    print(
+        f"{'=' * 60}\r\nRunning Enhanced Backtest with BettingCalculator...\r\n{'=' * 60}\r\n"
+    )
     try:
         base_results = backtester.backtest_cross_season(
             data=matches,
@@ -1134,10 +1132,7 @@ def run_backtest_example():
             model_params={"config": model_config},
         )
 
-        # Print results
-        print("\n" + "=" * 60)
-        print("ENHANCED BACKTEST RESULTS")
-        print("=" * 60)
+        print(f"{'=' * 60}\r\nENHANCED BACKTEST RESULTS\r\n{'=' * 60}\r\n")
 
         metrics = base_results.metrics
         print(f"\nModel Performance:")
@@ -1245,9 +1240,10 @@ def run_calibration_example():
         config = kwargs.get("config", model_config)
         return ZSDPoissonModel(config)
 
-    print("\n" + "=" * 60)
-    print("Running Calibration Example with BettingCalculator...")
-    print("=" * 60)
+    print(
+        f"{'=' * 60}\r\nRunning Calibration Example with BettingCalculator...\r\n{'=' * 60}\r\n"
+    )
+
     try:
         # Run backtest with calibration
         results_calibrated = backtester.backtest_with_calibration(
@@ -1319,9 +1315,10 @@ def run_ppi_filtered_example():
         config = kwargs.get("config", model_config)
         return ZSDPoissonModel(config)
 
-    print("\n" + "=" * 60)
-    print("Running PPI-Filtered Strategy with BettingCalculator...")
-    print("=" * 60)
+    print(
+        f"{'=' * 60}\r\nRunning PPI-Filtered Strategy with BettingCalculator...\r\n{'=' * 60}\r\n"
+    )
+
     try:
         ppi_results = backtester.backtest_ppi_filtered_strategy(
             data=matches,
@@ -1333,11 +1330,7 @@ def run_ppi_filtered_example():
             top_n_ppi_matches=4,
         )
 
-        # Print results for the PPI-filtered strategy
-        print("\n" + "=" * 60)
-        print("PPI-FILTERED STRATEGY RESULTS (with BettingCalculator)")
-        print("=" * 60)
-
+        print(f"{'=' * 60}\r\nPPI-FILTERED STRATEGY RESULTS\r\n{'=' * 60}\r\n")
         metrics = ppi_results.metrics
         print(f"\nModel Performance (for filtered matches):")
         print(f"  Accuracy: {metrics.get('accuracy', 0):.3f}")
@@ -1374,10 +1367,8 @@ if __name__ == "__main__":
     print("Running enhanced backtest example with BettingCalculator integration...")
     run_backtest_example()
 
-    print("\n" + "=" * 60)
-    print("Running calibration example...")
+    print(f"{'=' * 60}\r\nRunning calibration example...\r\n{'=' * 60}\r\n")
     run_calibration_example()
 
-    print("\n" + "=" * 60)
-    print("Running PPI-filtered strategy example...")
+    print(f"{'=' * 60}\r\nRunning PPI-filtered strategy example...\r\n{'=' * 60}\r\n")
     run_ppi_filtered_example()
