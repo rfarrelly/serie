@@ -336,7 +336,7 @@ class BettingPipeline:
             )
             print(
                 f"    Fair Odds: {candidate.get('Fair_Odds_Selected', 0):.2f}, "
-                f"Market Odds: {candidate.get('Market_Odds', 0):.2f}"
+                f"Sharp Odds: {candidate.get('Sharp_Odds', 0):.2f}"
             )
 
             if "PPI_Diff" in candidate:

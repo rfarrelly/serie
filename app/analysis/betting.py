@@ -68,7 +68,7 @@ class BettingCalculator:
             edge=edges["expected_values"][best_bet_idx],
             model_prob=weighted_probs[best_bet_idx],
             market_prob=no_vig_sharp_probs[best_bet_idx],
-            market_odds=sharp_odds[best_bet_idx],
+            sharp_odds=sharp_odds[best_bet_idx],
             soft_odds=soft_odds[best_bet_idx],
             fair_odds=1 / weighted_probs[best_bet_idx],
             expected_values=edges["expected_values"],
@@ -142,7 +142,7 @@ class BettingCalculator:
             "Edge": metrics.edge,
             "Model_Prob": metrics.model_prob,
             "Market_Prob": metrics.market_prob,
-            "Market_Odds": metrics.market_odds,
+            "Sharp_Odds": metrics.sharp_odds,
             "Soft_Odds": metrics.soft_odds,
             "Fair_Odds_Selected": metrics.fair_odds,
         }

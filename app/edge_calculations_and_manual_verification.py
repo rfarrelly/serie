@@ -43,13 +43,13 @@ def manual_edge_calculation_example():
     )
 
     # Step 2: Market odds and no-vig calculation
-    market_odds = [2.20, 3.40, 3.20]  # H, D, A
+    sharp_odds = [2.20, 3.40, 3.20]  # H, D, A
     print(
-        f"\nMarket Odds: H={market_odds[0]:.2f}, D={market_odds[1]:.2f}, A={market_odds[2]:.2f}"
+        f"\nMarket Odds: H={sharp_odds[0]:.2f}, D={sharp_odds[1]:.2f}, A={sharp_odds[2]:.2f}"
     )
 
     # Calculate no-vig odds
-    no_vig_odds = get_no_vig_odds_multiway(market_odds)
+    no_vig_odds = get_no_vig_odds_multiway(sharp_odds)
     no_vig_probs = [1 / odd for odd in no_vig_odds]
 
     print(
@@ -93,7 +93,7 @@ def manual_edge_calculation_example():
     print(f"\nStep 6 - Best Betting Opportunity:")
     print(f"  Best bet: {bet_types[best_bet_idx]}")
     print(f"  Edge: {max_edge:.4f} ({max_edge * 100:.2f}%)")
-    print(f"  Market odds: {market_odds[best_bet_idx]:.2f}")
+    print(f"  Market odds: {sharp_odds[best_bet_idx]:.2f}")
     print(f"  Fair odds: {fair_odds[best_bet_idx]:.2f}")
     print(f"  Weighted probability: {weighted_probs[best_bet_idx]:.3f}")
 
@@ -185,7 +185,7 @@ def test_edge_calculation_scenarios():
             f"Model Average: H={model_avg[0]:.3f}, D={model_avg[1]:.3f}, A={model_avg[2]:.3f}"
         )
         print(
-            f"Market Odds: H={scenario['odds'][0]:.2f}, D={scenario['odds'][1]:.2f}, A={scenario['odds'][2]:.2f}"
+            f"Sharp Odds: H={scenario['odds'][0]:.2f}, D={scenario['odds'][1]:.2f}, A={scenario['odds'][2]:.2f}"
         )
         print(
             f"No-vig Probs: H={no_vig_probs[0]:.3f}, D={no_vig_probs[1]:.3f}, A={no_vig_probs[2]:.3f}"
@@ -221,7 +221,7 @@ def validate_probability_conservation():
     poisson_probs = [0.45, 0.30, 0.25]
     zip_probs = [0.50, 0.28, 0.22]
     mov_probs = [0.47, 0.29, 0.24]
-    market_odds = [2.20, 3.40, 3.20]
+    sharp_odds = [2.20, 3.40, 3.20]
 
     print("Testing probability conservation at each step...")
 
@@ -244,7 +244,7 @@ def validate_probability_conservation():
     )
 
     # Step 3: No-vig probabilities
-    no_vig_odds = get_no_vig_odds_multiway(market_odds)
+    no_vig_odds = get_no_vig_odds_multiway(sharp_odds)
     no_vig_probs = [1 / odd for odd in no_vig_odds]
     no_vig_sum = sum(no_vig_probs)
     print(
@@ -281,13 +281,13 @@ def manual_calculation_verification():
     poisson = [0.52, 0.26, 0.22]
     zip_model = [0.54, 0.25, 0.21]
     mov_model = [0.53, 0.26, 0.21]
-    market_odds = [1.95, 3.60, 4.20]
+    sharp_odds = [1.95, 3.60, 4.20]
 
     print("Given:")
     print(f"  Poisson probabilities: {poisson}")
     print(f"  ZIP probabilities: {zip_model}")
     print(f"  MOV probabilities: {mov_model}")
-    print(f"  Market odds: {market_odds}")
+    print(f"  Market odds: {sharp_odds}")
 
     # Manual calculations
     print("\nStep-by-step calculation:")
@@ -307,7 +307,7 @@ def manual_calculation_verification():
 
     # Step 2: No-vig calculation
     print("\n2. No-vig Calculation:")
-    implied_probs = [1 / odd for odd in market_odds]
+    implied_probs = [1 / odd for odd in sharp_odds]
     total_implied = sum(implied_probs)
     print(f"   Implied probabilities: {[f'{p:.6f}' for p in implied_probs]}")
     print(f"   Total implied probability: {total_implied:.6f}")
@@ -357,7 +357,7 @@ def manual_calculation_verification():
 
     print(f"   Maximum edge: {max_edge:.6f} ({max_edge * 100:.2f}%)")
     print(f"   Best bet: {outcomes[best_idx]}")
-    print(f"   Market odds: {market_odds[best_idx]:.2f}")
+    print(f"   Market odds: {sharp_odds[best_idx]:.2f}")
     print(f"   Fair odds: {fair_odds[best_idx]:.2f}")
 
     if max_edge > 0.02:

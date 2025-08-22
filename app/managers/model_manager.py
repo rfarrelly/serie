@@ -78,6 +78,7 @@ class ModelManager:
             print(
                 f"  Training data: {len(league_data)} matches, Teams: {len(model.teams)}"
             )
+            print(f"  Last match in data:\r\n{league_data.tail(1)}")
             return model
 
         except Exception as e:
@@ -364,7 +365,7 @@ class ModelManager:
                     "Edge": 0.0,
                     "Model_Prob": 0.0,
                     "Market_Prob": 0.0,
-                    "Market_Odds": 0.0,
+                    "Sharp_Odds": 0.0,
                     "Soft_Odds": 0.0,
                     "Fair_Odds_Selected": 0.0,
                     "EV_H": 0.0,

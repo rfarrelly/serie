@@ -62,7 +62,7 @@ class BettingMetrics:
     edge: float
     model_prob: float
     market_prob: float
-    market_odds: float
+    sharp_odds: float
     soft_odds: float
     fair_odds: float
     expected_values: List[float]
