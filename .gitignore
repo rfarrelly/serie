@@ -15,7 +15,7 @@ wheels/
 .env
 
 # Custom files and folders
-DATA
+/DATA/
 optimisation_validation
 zsd_configs
 temp.py
