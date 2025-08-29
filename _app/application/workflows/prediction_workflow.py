@@ -28,7 +28,7 @@ class PredictionWorkflowConfig:
     model_weight: Decimal = Decimal("0.1")
     historical_season: Season = Season("2023-2024")
     min_matches_for_ppi: int = 5
-    max_predictions: int = 50
+    max_predictions: int = 1000
 
 
 @dataclass
