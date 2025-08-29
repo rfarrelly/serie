@@ -1,3 +1,4 @@
+# application/use_cases/get_team_matches.py
 from typing import List
 
 from domain.entities.match import Match
@@ -6,7 +7,7 @@ from shared.types.common_types import LeagueName, Season, TeamName
 
 
 class GetTeamMatchesUseCase:
-    """Simple use case to test the new architecture"""
+    """Use case to retrieve historical matches for a team"""
 
     def __init__(self, match_repository: MatchRepository):
         self._match_repository = match_repository

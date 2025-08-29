@@ -1,3 +1,4 @@
+# shared/types/common_types.py
 from decimal import Decimal
 from enum import Enum
 from typing import NewType
@@ -19,3 +20,12 @@ class ModelType(Enum):
     ZIP = "zip"
     MOV = "mov"
     ENHANCED_ZSD = "enhanced_zsd"
+
+
+class BookmakerType(Enum):
+    """Different bookmaker/odds source types"""
+
+    PINNACLE = "PS"  # Sharp odds
+    BET365 = "B365"  # Soft odds
+    PINNACLE_CLOSING = "PSC"
+    BET365_CLOSING = "B365C"
