@@ -11,10 +11,11 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
+from domain.entities.betting import BettingOpportunity
 from domain.entities.match import Fixture
 from domain.repositories import FixtureRepository, MatchRepository
-from domain.services.edge_calculator import EdgeCalculator
-from domain.services.ppi_calculator import PPICalculator
+from domain.services.edge_calculator import EdgeCalculationResult, EdgeCalculator
+from domain.services.ppi_calculator import PPICalculationResult, PPICalculator
 from shared.exceptions import InsufficientDataException
 from shared.types.common_types import LeagueName, Season
 
@@ -48,11 +49,11 @@ class EnhancedPrediction:
     """Enhanced prediction with all analysis"""
 
     fixture: Fixture
-    home_ppi: Optional["PPICalculationResult"] = None
-    away_ppi: Optional["PPICalculationResult"] = None
-    ppi_differential: Optional[Decimal] = None
-    edge_analysis: Optional["EdgeCalculationResult"] = None
-    betting_opportunity: Optional["BettingOpportunity"] = None
+    home_ppi: PPICalculationResult | None = None
+    away_ppi: PPICalculationResult | None = None
+    ppi_differential: Decimal | None = None
+    edge_analysis: EdgeCalculationResult | None = None
+    betting_opportunity: BettingOpportunity | None = None
     recommendation: str = "ANALYZE"
     confidence_score: Decimal = Decimal("0")
 
