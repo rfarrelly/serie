@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 from domain.entities.betting import BettingOpportunity
-from domain.entities.match import Fixture
+from domain.entities.match import Fixture, Match
 from domain.repositories import FixtureRepository, MatchRepository
 from domain.services.edge_calculator import EdgeCalculationResult, EdgeCalculator
 from domain.services.ppi_calculator import PPICalculationResult, PPICalculator
@@ -197,7 +197,7 @@ class GenerateCompletePredictionsWorkflow:
                     f"Could not load fixtures: {e}. Fallback also failed: {fallback_error}"
                 )
 
-    def _load_historical_data(self, fixtures: List[Fixture]) -> List["Match"]:
+    def _load_historical_data(self, fixtures: List[Fixture]) -> List[Match]:
         """Load historical data for PPI analysis"""
         historical_matches = []
         leagues_to_load = set(f.league for f in fixtures)
