@@ -1,3 +1,5 @@
+import sys
+from datetime import datetime
 from pathlib import Path
 from typing import List
 
@@ -7,9 +9,11 @@ from shared.exceptions import DomainError, InfrastructureError
 from ..formatters.output_formatter import OutputFormatter
 
 
-class CLIApplication:
+class EnhancedCLIApplication:
     def __init__(
-        self, application_service: ApplicationService, output_formatter: OutputFormatter
+        self,
+        application_service: ApplicationService,
+        output_formatter: OutputFormatter,
     ):
         self.app_service = application_service
         self.formatter = output_formatter
@@ -23,7 +27,7 @@ class CLIApplication:
 
         try:
             if command == "predict":
-                return self._handle_predictions(args[2:])
+                return self._handle_enhanced_predictions(args[2:])
             elif command == "optimize":
                 return self._handle_optimization(args[2:])
             elif command == "update":
@@ -32,6 +36,8 @@ class CLIApplication:
                 return self._handle_validation(args[2:])
             elif command == "status":
                 return self._handle_status()
+            elif command == "legacy":
+                return self._handle_legacy_compatibility()
             elif command in ["-h", "--help", "help"]:
                 self._print_help()
                 return 0
@@ -48,41 +54,69 @@ class CLIApplication:
             return 1
         except Exception as e:
             print(f"Unexpected error: {e}")
+            import traceback
+
+            traceback.print_exc()
             return 1
 
-    def _handle_predictions(self, args: List[str]) -> int:
-        # Parse arguments for prediction parameters
+    def _handle_enhanced_predictions(self, args: List[str]) -> int:
+        # Parse arguments
         league = None
         season = None
-        method = "zip"
 
-        # Simple argument parsing
         for i, arg in enumerate(args):
             if arg == "--league" and i + 1 < len(args):
                 league = args[i + 1]
             elif arg == "--season" and i + 1 < len(args):
                 season = args[i + 1]
-            elif arg == "--method" and i + 1 < len(args):
-                method = args[i + 1]
 
-        print("Generating predictions...")
-        predictions, betting_opportunities = self.app_service.generate_predictions(
-            league=league, season=season, method=method
+        print("Generating enhanced predictions with all methods...")
+        print(f"League: {league or 'All'}")
+        print(f"Season: {season or 'Current'}")
+
+        predictions, betting_opportunities = (
+            self.app_service.generate_enhanced_predictions(league=league, season=season)
         )
 
-        # Display results
-        self.formatter.display_predictions(predictions)
-        self.formatter.display_betting_opportunities(betting_opportunities)
+        # Display results with all original detail
+        self.formatter.display_enhanced_predictions(predictions)
+        self.formatter.display_enhanced_betting_opportunities(betting_opportunities)
 
-        # Save results
-        self.formatter.save_predictions_to_csv(predictions, "latest_predictions.csv")
-        self.formatter.save_betting_opportunities_to_csv(
-            betting_opportunities, "betting_opportunities.csv"
+        # Save results in original format
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pred_filename = f"latest_zsd_enhanced_{timestamp}.csv"
+        opp_filename = f"zsd_betting_candidates_{timestamp}.csv"
+
+        self.formatter.save_enhanced_predictions_to_csv(predictions, pred_filename)
+        self.formatter.save_enhanced_betting_opportunities_to_csv(
+            betting_opportunities, opp_filename
         )
 
-        print(
-            f"Generated {len(predictions)} predictions and found {len(betting_opportunities)} betting opportunities"
+        # Legacy filenames for compatibility
+        self.formatter.save_enhanced_predictions_to_csv(
+            predictions, "latest_zsd_enhanced.csv"
         )
+        self.formatter.save_enhanced_betting_opportunities_to_csv(
+            betting_opportunities, "zsd_betting_candidates.csv"
+        )
+
+        print(f"\nSUMMARY:")
+        print(f"Total predictions: {len(predictions)}")
+        print(f"Betting candidates: {len(betting_opportunities)}")
+
+        if betting_opportunities:
+            avg_edge = sum(opp.edge for opp in betting_opportunities) / len(
+                betting_opportunities
+            )
+            max_edge = max(opp.edge for opp in betting_opportunities)
+            print(f"Average edge: {avg_edge:.3f}")
+            print(f"Maximum edge: {max_edge:.3f}")
+
+            bet_type_dist = {}
+            for opp in betting_opportunities:
+                bet_type_dist[opp.bet_type] = bet_type_dist.get(opp.bet_type, 0) + 1
+            print(f"Bet type distribution: {bet_type_dist}")
+
         return 0
 
     def _handle_optimization(self, args: List[str]) -> int:
@@ -103,14 +137,22 @@ class CLIApplication:
 
         season = args[0]
 
-        # Define leagues to update (this would come from config)
-        leagues = [
-            {"name": "Premier-League", "fbref_id": 9, "fbduk_id": "E0"},
-            {"name": "Championship", "fbref_id": 10, "fbduk_id": "E1"},
-            # Add more leagues as needed
-        ]
+        # Define leagues to update (original league set)
+        from shared.types import League
+
+        leagues = []
+        for league in League:
+            leagues.append(
+                {
+                    "name": league.name,
+                    "fbref_id": league.fbref_id,
+                    "fbduk_id": league.fbduk_id,
+                }
+            )
 
         print(f"Updating data for season {season}...")
+        print(f"Processing {len(leagues)} leagues...")
+
         results = self.app_service.update_league_data(leagues, season)
 
         self.formatter.display_update_results(results)
@@ -141,7 +183,7 @@ class CLIApplication:
         return 0
 
     def _handle_status(self) -> int:
-        print("System Status:")
+        print("Enhanced System Status:")
         print("=" * 50)
 
         # Check file existence
@@ -154,40 +196,108 @@ class CLIApplication:
         for file in required_files:
             exists = Path(file).exists()
             status = "✓" if exists else "✗"
-            print(f"{status} {file}")
+            size = ""
+            if exists:
+                size_mb = Path(file).stat().st_size / (1024 * 1024)
+                size = f" ({size_mb:.1f}MB)"
+            print(f"{status} {file}{size}")
 
+        # Check data directories
+        data_dirs = ["data/fbref", "data/fbduk", "config", "output"]
+        print(f"\nData Directories:")
+        for dir_path in data_dirs:
+            exists = Path(dir_path).exists()
+            status = "✓" if exists else "✗"
+            count = ""
+            if exists and Path(dir_path).is_dir():
+                csv_count = len(list(Path(dir_path).rglob("*.csv")))
+                count = f" ({csv_count} CSV files)"
+            print(f"{status} {dir_path}{count}")
+
+        return 0
+
+    def _handle_legacy_compatibility(self) -> int:
+        """Handle legacy function calls for backward compatibility"""
+        print("Legacy Compatibility Mode")
+        print("=" * 40)
+        print("Available legacy functions:")
+        print("  - run_backtest_example()")
+        print("  - run_calibration_example()")
+        print("  - build_team_name_dictionary()")
+        print("  - validate_zsd_backtest_results()")
+        print("\nTo use legacy functions, import from legacy_main.py")
+        print("New recommended usage: python enhanced_main.py predict")
         return 0
 
     def _print_help(self):
         help_text = """
-Football Betting Analysis Tool
+Enhanced Football Betting Analysis Tool - Full Feature Set
 
 Usage:
-    python main.py <command> [options]
+    python enhanced_main.py <command> [options]
 
 Commands:
-    predict [--league LEAGUE] [--season SEASON] [--method METHOD]
-        Generate predictions for upcoming matches
+    predict [--league LEAGUE] [--season SEASON]
+        Generate enhanced predictions with all methods (Poisson, ZIP, MOV)
+        Includes PPI analysis, betting edge calculations, and comprehensive output
         
     optimize [LEAGUE]
         Optimize model parameters for all leagues or specific league
         
     update <season>
-        Update data for specified season
+        Update data for all leagues for specified season
         
     validate <betting_file> <predictions_file>
-        Validate backtest results
+        Comprehensive backtest validation with statistical tests
         
     status
-        Show system status
+        Show enhanced system status with data directory info
+        
+    legacy
+        Show legacy compatibility information
         
     help, -h, --help
         Show this help message
 
+Features (restored from original system):
+    ✓ Multiple prediction methods (Poisson, ZIP, MOV)
+    ✓ PPI (Points Performance Index) calculations
+    ✓ Comprehensive betting edge analysis
+    ✓ Kelly criterion stake sizing
+    ✓ All probability and edge calculations
+    ✓ Market efficiency analysis
+    ✓ Team rating optimization
+    ✓ Zero-inflated Poisson modeling
+    ✓ Margin of Victory predictions
+    ✓ Cross-validation and parameter tuning
+    ✓ Backtest validation with statistical tests
+
 Examples:
-    python main.py predict --league Premier-League --method zip
-    python main.py optimize Premier-League
-    python main.py update 2023-24
-    python main.py validate results.csv predictions.csv
+    python enhanced_main.py predict --league Premier-League
+    python enhanced_main.py predict  # All leagues
+    python enhanced_main.py optimize Premier-League
+    python enhanced_main.py update 2023-24
+    python enhanced_main.py validate results.csv predictions.csv
         """
         print(help_text)
+
+
+def main():
+    """Enhanced main entry point with full feature set"""
+    try:
+        app = create_enhanced_application()
+        exit_code = app.run(sys.argv)
+        sys.exit(exit_code)
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Fatal error: {e}")
+        import traceback
+
+        traceback.print_exc()
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

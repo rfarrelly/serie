@@ -1,30 +1,31 @@
-import sys
 from pathlib import Path
 
+# Enhanced dependency injection setup
 from application.services.application_service import ApplicationService
-from application.use_cases.generate_predictions import GeneratePredictionsUseCase
+from application.use_cases.enhanced_generate_predictions import (
+    EnhancedGeneratePredictionsUseCase,
+)
 from application.use_cases.optimize_parameters import OptimizeParametersUseCase
 from application.use_cases.update_data import UpdateDataUseCase
 from application.use_cases.validate_backtest import ValidateBacktestUseCase
-from domain.services.betting_service import BettingService
+from domain.services.enhanced_betting_service import EnhancedBettingService
+from domain.services.enhanced_prediction_service import EnhancedPredictionService
 from domain.services.model_service import ModelService
-from domain.services.prediction_service import PredictionService
+from domain.services.ppi_service import PPIService
 from infrastructure.data_sources.fbduk_client import FBDukClient
 from infrastructure.data_sources.fbref_client import FBRefClient
 from infrastructure.storage.config_storage import ConfigStorage
-
-# Dependency injection setup
 from infrastructure.storage.csv_storage import (
     CSVMatchRepository,
     CSVPredictionRepository,
     CSVTeamRepository,
 )
-from presentation.cli.main import CLIApplication
+from presentation.cli.main import EnhancedCLIApplication
 from presentation.formatters.output_formatter import OutputFormatter
 
 
-def create_application() -> CLIApplication:
-    """Factory function to create the application with all dependencies"""
+def create_enhanced_application() -> EnhancedCLIApplication:
+    """Factory function to create the enhanced application with all original features"""
 
     # Infrastructure layer
     data_dir = Path("data")
@@ -42,17 +43,19 @@ def create_application() -> CLIApplication:
     )
 
     # Domain services
-    prediction_service = PredictionService()
-    betting_service = BettingService()
+    prediction_service = EnhancedPredictionService()
+    betting_service = EnhancedBettingService()
     model_service = ModelService()
+    ppi_service = PPIService()
 
     # Use cases
-    generate_predictions_use_case = GeneratePredictionsUseCase(
+    enhanced_generate_predictions_use_case = EnhancedGeneratePredictionsUseCase(
         match_repository,
         team_repository,
         prediction_service,
         betting_service,
         model_service,
+        ppi_service,
     )
     optimize_parameters_use_case = OptimizeParametersUseCase(
         match_repository, model_service, config_storage
@@ -64,7 +67,7 @@ def create_application() -> CLIApplication:
 
     # Application service
     application_service = ApplicationService(
-        generate_predictions_use_case,
+        enhanced_generate_predictions_use_case,
         optimize_parameters_use_case,
         update_data_use_case,
         validate_backtest_use_case,
@@ -72,24 +75,6 @@ def create_application() -> CLIApplication:
 
     # Presentation layer
     output_formatter = OutputFormatter()
-    cli_application = CLIApplication(application_service, output_formatter)
+    cli_application = EnhancedCLIApplication(application_service, output_formatter)
 
     return cli_application
-
-
-def main():
-    """Main entry point"""
-    try:
-        app = create_application()
-        exit_code = app.run(sys.argv)
-        sys.exit(exit_code)
-    except KeyboardInterrupt:
-        print("\nOperation cancelled by user")
-        sys.exit(1)
-    except Exception as e:
-        print(f"Fatal error: {e}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
