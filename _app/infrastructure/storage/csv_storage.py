@@ -89,36 +89,76 @@ class CSVMatchRepository(MatchRepository):
 
     def _df_to_matches(self, df: pd.DataFrame) -> List[Match]:
         matches = []
+
         for _, row in df.iterrows():
             try:
+                # Parse date
+                try:
+                    match_date = pd.to_datetime(row["Date"])
+                except (ValueError, TypeError):
+                    print(f"Invalid date format: {row.get('Date', 'N/A')}")
+                    continue
+
                 # Parse odds if available
                 odds = None
                 if all(col in df.columns for col in ["PSH", "PSD", "PSA"]):
-                    if not (
-                        pd.isna(row["PSH"])
-                        or pd.isna(row["PSD"])
-                        or pd.isna(row["PSA"])
-                    ):
-                        odds = OddsSet(
-                            home=Odds(row["PSH"]),
-                            draw=Odds(row["PSD"]),
-                            away=Odds(row["PSA"]),
-                        )
+                    try:
+                        if not (
+                            pd.isna(row["PSH"])
+                            or pd.isna(row["PSD"])
+                            or pd.isna(row["PSA"])
+                        ):
+                            psh, psd, psa = (
+                                float(row["PSH"]),
+                                float(row["PSD"]),
+                                float(row["PSA"]),
+                            )
+                            if all(odd > 1.0 for odd in [psh, psd, psa]):
+                                odds = OddsSet(
+                                    home=Odds(psh), draw=Odds(psd), away=Odds(psa)
+                                )
+                    except (ValueError, TypeError):
+                        pass  # Skip invalid odds
+
+                # Parse goals (may be NaN for upcoming matches)
+                home_goals = None
+                away_goals = None
+                if "FTHG" in df.columns and "FTAG" in df.columns:
+                    try:
+                        if pd.notna(row["FTHG"]) and pd.notna(row["FTAG"]):
+                            home_goals = int(float(row["FTHG"]))
+                            away_goals = int(float(row["FTAG"]))
+                    except (ValueError, TypeError):
+                        pass  # Keep as None for upcoming matches
+
+                # Parse week
+                week = None
+                if "Wk" in df.columns:
+                    try:
+                        if pd.notna(row["Wk"]):
+                            week = int(float(row["Wk"]))
+                    except (ValueError, TypeError):
+                        pass
 
                 match = Match(
-                    home_team=row["Home"],
-                    away_team=row["Away"],
-                    date=pd.to_datetime(row["Date"]),
-                    league=row.get("League", "Unknown"),
-                    season=row.get("Season", "Unknown"),
-                    week=row.get("Wk"),
-                    home_goals=row.get("FTHG") if pd.notna(row.get("FTHG")) else None,
-                    away_goals=row.get("FTAG") if pd.notna(row.get("FTAG")) else None,
+                    home_team=str(row["Home"]).strip(),
+                    away_team=str(row["Away"]).strip(),
+                    date=match_date,
+                    league=str(row.get("League", "Unknown")).strip(),
+                    season=str(row.get("Season", "Unknown")).strip(),
+                    week=week,
+                    home_goals=home_goals,
+                    away_goals=away_goals,
                     odds=odds,
                 )
+
                 matches.append(match)
-            except Exception:
+
+            except Exception as e:
+                print(f"Error processing match row: {e}")
+                print(f"Row data: {dict(row)}")
                 continue
+
         return matches
 
 
