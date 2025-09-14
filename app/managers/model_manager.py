@@ -88,9 +88,21 @@ class ModelManager:
     def predict_matches(self, fixtures_df: pd.DataFrame) -> pd.DataFrame:
         """Generate predictions for upcoming matches."""
         predictions = []
+        previous_season = self.global_config.previous_season
 
         for _, match in fixtures_df.iterrows():
             league = match.get("League")
+
+            if self._is_relegated_or_promoted(
+                teams=set(match[["Home", "Away"]]),
+                league=league,
+                previous_season=previous_season,
+            ):
+                print(
+                    f"Rejected fixture: {match['Home']} v {match['Away']} - one or more teams not in previous season"
+                )
+                continue
+
             model = self.models.get(league)
 
             if model is None:
@@ -104,6 +116,15 @@ class ModelManager:
                 print(f"Error predicting {match['Home']} vs {match['Away']}: {e}")
 
         return pd.DataFrame(predictions)
+
+    def _is_relegated_or_promoted(
+        self, teams: set[str], league: str, previous_season: str
+    ) -> bool:
+        """Checks if teams have been relegated or promoted to/from previous season"""
+        previous_season_file_path = f"{self.global_config.fbref_data_dir}/{league}/{league}_{previous_season}.csv"
+        if not teams.issubset(pd.read_csv(previous_season_file_path)["Home"]):
+            return True
+        return False
 
     def _generate_param_combinations(self) -> List[Dict]:
         """Generate parameter combinations for optimization."""
