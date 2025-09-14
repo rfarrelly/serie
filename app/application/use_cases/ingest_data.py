@@ -1,5 +1,6 @@
 from typing import List
 
+import pandas as pd
 from domains.data.entities import Match
 from domains.data.repositories import MatchRepository
 from domains.data.services import PPICalculationService
