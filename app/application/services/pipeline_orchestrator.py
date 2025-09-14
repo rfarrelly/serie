@@ -78,8 +78,6 @@ class PipelineOrchestrator:
         """Convert prediction dictionaries back to domain objects"""
         # This is a simplified conversion - in a real implementation
         # we'd properly reconstruct the domain objects
-        from decimal import Decimal
-
         from domains.data.entities import Match, Team
         from domains.predictions.entities import Prediction
         from domains.shared.value_objects import Probabilities
@@ -97,16 +95,16 @@ class PipelineOrchestrator:
             )
 
             probabilities = Probabilities(
-                home=Decimal(str(pred_dict["ZSD_Prob_H"])),
-                draw=Decimal(str(pred_dict["ZSD_Prob_D"])),
-                away=Decimal(str(pred_dict["ZSD_Prob_A"])),
+                home=float(pred_dict["ZSD_Prob_H"]),
+                draw=float(pred_dict["ZSD_Prob_D"]),
+                away=float(pred_dict["ZSD_Prob_A"]),
             )
 
             prediction = Prediction(
                 match=match,
                 probabilities=probabilities,
-                lambda_home=pred_dict["ZSD_Lambda_H"],
-                lambda_away=pred_dict["ZSD_Lambda_A"],
+                lambda_home=float(pred_dict["ZSD_Lambda_H"]),
+                lambda_away=float(pred_dict["ZSD_Lambda_A"]),
                 model_type=pred_dict["Model_Type"],
                 created_at=pred_dict["Date"],
                 metadata={},
