@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from analysis.betting import BettingCalculator, BettingFilter
+from domains.betting.services import BettingAnalysisService
 from models.core import ModelConfig
 from models.zsd_model import ZSDPoissonModel
 from scipy.stats import poisson
@@ -14,6 +14,30 @@ from sklearn.preprocessing import StandardScaler
 from utils.odds_helpers import get_no_vig_odds_multiway
 
 warnings.filterwarnings("ignore")
+
+
+class BettingFilter:
+    """Filters betting candidates based on various criteria."""
+
+    def __init__(
+        self, min_edge: float = 0.02, min_prob: float = 0.1, max_odds: float = 10.0
+    ):
+        self.min_edge = min_edge
+        self.min_prob = min_prob
+        self.max_odds = max_odds
+
+    def filter_candidates(self, candidates_df: pd.DataFrame) -> pd.DataFrame:
+        """Apply filters to betting candidates."""
+        if len(candidates_df) == 0:
+            return candidates_df
+
+        filtered = candidates_df[
+            (candidates_df["Edge"] >= self.min_edge)
+            & (candidates_df["Model_Prob"] >= self.min_prob)
+            & (candidates_df["Soft_Odds"] <= self.max_odds)
+        ].copy()
+
+        return filtered.sort_values("Edge", ascending=False)
 
 
 @dataclass
@@ -126,13 +150,13 @@ class ModelEvaluator:
 
 
 class BettingSimulator:
-    """Simulates betting strategy and tracks performance using BettingCalculator."""
+    """Simulates betting strategy and tracks performance using BettingAnalysisService."""
 
     def __init__(self, config: BackTestConfig):
         self.config = config
         self.bankroll = 100.0  # Starting bankroll
         self.betting_history = []
-        self.betting_calculator = BettingCalculator()
+        self.betting_service = BettingAnalysisService()
         self.betting_filter = BettingFilter(
             min_edge=config.min_edge, min_prob=config.min_prob, max_odds=config.max_odds
         )
@@ -142,20 +166,24 @@ class BettingSimulator:
         prediction_row: pd.Series,
         actual_outcome: int,
     ) -> Optional[BettingResult]:
-        """Evaluate whether to place a bet using BettingCalculator."""
+        """Evaluate whether to place a bet using BettingAnalysisService."""
         try:
-            # Use the BettingCalculator to analyze the prediction
-            betting_metrics = self.betting_calculator.analyze_prediction(prediction_row)
+            # Use the BettingAnalysisService to analyze the prediction
+            betting_metrics = self.betting_service.analyze_prediction_row(
+                prediction_row
+            )
 
             if betting_metrics is None:
                 return None
 
             # Check if it meets our betting criteria
-            if betting_metrics.edge < self.config.betting_threshold:
+            if betting_metrics["edge"] < self.config.betting_threshold:
                 return None
 
             # Kelly criterion for stake sizing (simplified)
-            kelly_fraction = betting_metrics.edge / (betting_metrics.soft_odds - 1)
+            kelly_fraction = betting_metrics["edge"] / (
+                betting_metrics["soft_odds"] - 1
+            )
             stake = min(
                 self.config.stake_size,
                 self.bankroll * min(kelly_fraction, self.config.max_stake_fraction),
@@ -163,10 +191,10 @@ class BettingSimulator:
 
             # Calculate profit based on actual outcome
             bet_outcome_map = {"Home": 0, "Draw": 1, "Away": 2}
-            bet_outcome_idx = bet_outcome_map[betting_metrics.bet_type]
+            bet_outcome_idx = bet_outcome_map[betting_metrics["bet_type"]]
 
             if bet_outcome_idx == actual_outcome:
-                profit = stake * (betting_metrics.soft_odds - 1)
+                profit = stake * (betting_metrics["soft_odds"] - 1)
             else:
                 profit = -stake
 
@@ -177,14 +205,14 @@ class BettingSimulator:
                 date=prediction_row["Date"],
                 home_team=prediction_row["Home"],
                 away_team=prediction_row["Away"],
-                bet_type=betting_metrics.bet_type,
+                bet_type=betting_metrics["bet_type"],
                 stake=stake,
-                odds=betting_metrics.soft_odds,
+                odds=betting_metrics["soft_odds"],
                 profit=profit,
-                model_prob=betting_metrics.model_prob,
-                market_prob=betting_metrics.market_prob,
-                edge=betting_metrics.edge,
-                expected_value=betting_metrics.edge * stake,
+                model_prob=betting_metrics["model_prob"],
+                market_prob=betting_metrics["market_prob"],
+                edge=betting_metrics["edge"],
+                expected_value=betting_metrics["edge"] * stake,
             )
 
             self.betting_history.append(result)

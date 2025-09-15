@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import pandas as pd
-from analysis.betting import BettingCalculator
 from backtesting import BackTestConfig, Backtester
+from domains.betting.services import BettingAnalysisService
 from models.core import ModelConfig
 from models.zsd_model import ZSDPoissonModel
 from utils.config_manager import ConfigManager
@@ -21,7 +21,7 @@ class ModelManager:
     def __init__(self, global_config, config_dir: Path = Path("zsd_configs")):
         self.global_config = global_config
         self.config_manager = ConfigManager(config_dir)
-        self.betting_calculator = BettingCalculator()
+        self.betting_service = BettingAnalysisService()
         self.models = {}
 
     def optimize_league_parameters(
@@ -370,13 +370,13 @@ class ModelManager:
             if col in match.index:
                 pred_dict[col] = match[col]
 
-        # NEW: Add betting analysis if odds are available
+        # Add betting analysis if odds are available
         pred_series = pd.Series(pred_dict)
-        betting_metrics = self.betting_calculator.analyze_prediction(pred_series)
+        betting_metrics = self.betting_service.analyze_prediction_row(pred_series)
 
         if betting_metrics:
             # Add betting metrics to prediction
-            betting_dict = self.betting_calculator._metrics_to_dict(betting_metrics)
+            betting_dict = self.betting_service._metrics_to_dict(betting_metrics)
             pred_dict.update(betting_dict)
         else:
             # Add default values if no betting analysis possible
