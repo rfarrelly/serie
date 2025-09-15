@@ -1,23 +1,18 @@
 import sys
 from pathlib import Path
 
+from application.services.league_processing_service import LeagueProcessingService
 from application.services.pipeline_orchestrator import PipelineOrchestrator
 from application.use_cases.calculate_betting_edges import CalculateBettingEdgesUseCase
-
-# Use cases
 from application.use_cases.generate_predictions import GeneratePredictionsUseCase
 from application.use_cases.ingest_data import IngestDataUseCase
 from application.use_cases.optimize_models import OptimizeModelsUseCase
 from backtesting_validator import validate_zsd_backtest_results
-
-# Legacy imports for compatibility
 from config import DEFAULT_CONFIG, AppConfig, Leagues
 from domains.betting.services import BettingAnalysisService
-
-# Domain services
 from domains.data.services import PPICalculationService
-
-# Infrastructure imports
+from domains.predictions.entities import Prediction
+from domains.shared.value_objects import Probabilities
 from infrastructure.adapters.file_adapter import CSVFileAdapter
 from infrastructure.repositories.csv_betting_repository import CSVBettingRepository
 from infrastructure.repositories.csv_match_repository import CSVMatchRepository
@@ -25,7 +20,6 @@ from infrastructure.repositories.csv_prediction_repository import (
     CSVPredictionRepository,
 )
 from managers.model_manager import ModelManager
-from processing import get_historical_ppi
 from utils.data_merging import merge_future_odds_data, merge_historical_odds_data
 from utils.team_name_dict_builder import build_team_name_dictionary
 
@@ -48,6 +42,11 @@ class DependencyContainer:
         self.ppi_service = PPICalculationService(self.match_repository)
         self.betting_service = BettingAnalysisService(min_edge=0.02)
 
+        # Application services
+        self.league_processing_service = LeagueProcessingService(
+            self.ppi_service, self.file_adapter, self.config
+        )
+
         # Legacy components for model management
         self.model_manager = ModelManager(self.config)
 
@@ -62,7 +61,10 @@ class DependencyContainer:
             self.model_manager, self.match_repository
         )
         self.ingest_data_uc = IngestDataUseCase(
-            self.match_repository, self.ppi_service, self.file_adapter
+            self.match_repository,
+            self.ppi_service,
+            self.file_adapter,
+            self.league_processing_service,
         )
 
         # Pipeline orchestrator
@@ -146,32 +148,12 @@ class BettingPipeline:
             return False
 
     def run_latest_ppi(self) -> bool:
-        """Generate latest PPI data and merge with odds"""
+        """Generate latest PPI data and merge with odds using the new service"""
         print(f"{'=' * 60}\r\nGENERATING LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
 
         try:
-            # Get all leagues
-            leagues = [league.fbref_name for league in Leagues]
-
-            # Use legacy PPI calculation for now (to maintain compatibility)
-            from processing import LeagueProcessor
-
-            ppi_all_leagues = []
-            failed_leagues = []
-
-            for league in Leagues:
-                print(f"Processing {league.name} ({league.value['fbref_name']})")
-                processor = LeagueProcessor(league, self.config)
-
-                try:
-                    ppi = processor.get_points_performance_index()
-                    if ppi:
-                        ppi_all_leagues.extend(ppi)
-                        print(f"  Generated {len(ppi)} PPI records for {league.name}")
-                except Exception as e:
-                    print(f"Error getting latest PPI for {league.name}: {e}")
-                    failed_leagues.append(league.name)
-                    continue
+            # Use the new league processing service
+            ppi_all_leagues = self.container.league_processing_service.process_latest_ppi_for_all_leagues()
 
             if not ppi_all_leagues:
                 print("No PPI data generated")
@@ -188,9 +170,6 @@ class BettingPipeline:
             merge_future_odds_data()
             print("Successfully merged PPI data with odds")
 
-            if failed_leagues:
-                print(f"Note: Failed leagues: {', '.join(failed_leagues)}")
-
             return True
 
         except Exception as e:
@@ -201,16 +180,12 @@ class BettingPipeline:
             return False
 
     def run_historical_ppi(self) -> bool:
-        """Generate historical PPI data and merge with odds"""
+        """Generate historical PPI data and merge with odds using the new service"""
         print(f"{'=' * 60}\r\nGENERATING HISTORICAL PPI DATA\r\n{'=' * 60}\r\n")
 
         try:
-            historical_ppi = get_historical_ppi(self.config)
-
-            # Handle terminated matches
-            historical_ppi = historical_ppi[
-                ~historical_ppi["Home"].eq("Reus") & ~historical_ppi["Away"].eq("Reus")
-            ]
+            # Use the new league processing service
+            historical_ppi = self.container.league_processing_service.process_historical_ppi_for_all_leagues()
 
             self.container.file_adapter.write_csv(historical_ppi, "historical_ppi.csv")
             print(f"Saved {len(historical_ppi)} historical PPI records")
@@ -239,14 +214,16 @@ class BettingPipeline:
         failed_leagues = []
         successful_leagues = []
 
-        from processing import LeagueProcessor
+        # Import here to avoid circular dependency
+        from ingestion import DataIngestion
+
+        data_ingestion = DataIngestion(config)
 
         for league in Leagues:
-            processor = LeagueProcessor(league, config)
             try:
                 print(f"Processing {league.name}...")
-                processor.get_fbref_data()
-                processor.get_fbduk_data()
+                data_ingestion.get_fbref_data(league, season)
+                data_ingestion.get_fbduk_data(league, season)
                 successful_leagues.append(league.name)
             except Exception as e:
                 print(f"Error getting data for {league.name} {season}: {e}")
@@ -365,11 +342,7 @@ class ModelManagerPredictionService:
 
     def generate_predictions(self, matches):
         """Generate predictions for matches using the model manager"""
-        from decimal import Decimal
-
         import pandas as pd
-        from domains.predictions.entities import Prediction
-        from domains.shared.value_objects import Probabilities
 
         # Convert matches to DataFrame format expected by model manager
         match_data = []
