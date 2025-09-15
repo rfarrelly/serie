@@ -1,87 +1,115 @@
 import sys
 from pathlib import Path
 
-import pandas as pd
-from backtesting_validator import (
-    analyze_market_efficiency_violations,
-    benchmark_against_random_betting,
-    manual_bet_inspection_helper,
-    validate_zsd_backtest_results,
-)
+from application.services.league_processing_service import LeagueProcessingService
+from application.services.pipeline_orchestrator import PipelineOrchestrator
+from application.use_cases.calculate_betting_edges import CalculateBettingEdgesUseCase
+from application.use_cases.generate_predictions import GeneratePredictionsUseCase
+from application.use_cases.ingest_data import IngestDataUseCase
+from application.use_cases.optimize_models import OptimizeModelsUseCase
+from backtesting_validator import validate_zsd_backtest_results
 from config import DEFAULT_CONFIG, AppConfig, Leagues
-from processing import LeagueProcessor, get_historical_ppi
-from utils.data_merging import (
-    merge_future_odds_data,
-    merge_historical_odds_data,
+from domains.betting.services import BettingAnalysisService
+from domains.data.services import PPICalculationService
+from domains.predictions.entities import Prediction
+from domains.shared.value_objects import Probabilities
+from infrastructure.adapters.file_adapter import CSVFileAdapter
+from infrastructure.repositories.csv_betting_repository import CSVBettingRepository
+from infrastructure.repositories.csv_match_repository import CSVMatchRepository
+from infrastructure.repositories.csv_prediction_repository import (
+    CSVPredictionRepository,
 )
-from utils.pipeline_config import (
-    PipelineConfig,
-    PipelineModeValidator,
-    print_pipeline_help,
-)
+from managers.model_manager import ModelManager
+from utils.data_merging import merge_future_odds_data, merge_historical_odds_data
 from utils.team_name_dict_builder import build_team_name_dictionary
-from zsd_integration import (
-    daily_model_fitting,
-    generate_zsd_predictions,
-    periodic_parameter_optimization,
-    setup_zsd_integration,
-)
+
+
+class DependencyContainer:
+    """Simple dependency injection container"""
+
+    def __init__(self, config=None):
+        self.config = config or DEFAULT_CONFIG
+
+        # Infrastructure
+        self.file_adapter = CSVFileAdapter()
+
+        # Repositories
+        self.match_repository = CSVMatchRepository(self.file_adapter, self.config)
+        self.prediction_repository = CSVPredictionRepository(self.file_adapter)
+        self.betting_repository = CSVBettingRepository(self.file_adapter)
+
+        # Domain services
+        self.ppi_service = PPICalculationService(self.match_repository)
+        self.betting_service = BettingAnalysisService(min_edge=0.02)
+
+        # Application services
+        self.league_processing_service = LeagueProcessingService(
+            self.ppi_service, self.file_adapter, self.config
+        )
+
+        # Legacy components for model management
+        self.model_manager = ModelManager(self.config)
+
+        # Use cases
+        self.generate_predictions_uc = (
+            None  # Will be initialized when model is available
+        )
+        self.calculate_edges_uc = CalculateBettingEdgesUseCase(
+            self.betting_service, self.betting_repository, self.file_adapter
+        )
+        self.optimize_models_uc = OptimizeModelsUseCase(
+            self.model_manager, self.match_repository
+        )
+        self.ingest_data_uc = IngestDataUseCase(
+            self.match_repository,
+            self.ppi_service,
+            self.file_adapter,
+            self.league_processing_service,
+        )
+
+        # Pipeline orchestrator
+        self.pipeline = None  # Will be initialized when use cases are ready
 
 
 class BettingPipeline:
-    """Main betting pipeline orchestrator."""
+    """Main pipeline orchestrator using DDD architecture"""
 
     def __init__(self, config=None):
-        self.pipeline_config = PipelineConfig(config or DEFAULT_CONFIG)
-        self.validator = PipelineModeValidator(self.pipeline_config)
-        self.zsd_processor = None
-
-    def _initialize_zsd(self):
-        """Initialize ZSD processor if not already done."""
-        if self.zsd_processor is None:
-            print("Initializing ZSD processor...")
-            self.zsd_processor = setup_zsd_integration(self.pipeline_config.base_config)
-        return self.zsd_processor
+        self.container = DependencyContainer(config)
+        self.config = config or DEFAULT_CONFIG
 
     def run_zsd_predictions(self) -> bool:
-        """Generate ZSD predictions with enhanced features."""
-        if not self._validate_mode("predict"):
-            return False
+        """Generate ZSD predictions with enhanced features"""
         print(f"{'=' * 60}\r\nRUNNING ENHANCED ZSD PREDICTIONS\r\n{'=' * 60}\r\n")
 
         try:
-            # Load fixtures data
-            fixtures_file = "fixtures_ppi_and_odds.csv"
-            if not Path(fixtures_file).exists():
+            # Check required files
+            if not self.container.file_adapter.file_exists("fixtures_ppi_and_odds.csv"):
                 print(
-                    f"Error: {fixtures_file} not found. Please run 'latest_ppi' first."
+                    "Error: fixtures_ppi_and_odds.csv not found. Please run 'latest_ppi' first."
                 )
                 return False
 
-            fixtures_with_odds = pd.read_csv(fixtures_file)
-            print(f"Loaded {len(fixtures_with_odds)} fixtures")
+            # Initialize models for all leagues
+            self._initialize_models()
 
-            # Initialize ZSD processor and fit models
-            zsd_processor = self._initialize_zsd()
-
-            print("Fitting ZSD models with latest data...")
-            daily_model_fitting(zsd_processor)
-
-            print("Generating enhanced ZSD predictions...")
-            zsd_predictions = generate_zsd_predictions(
-                zsd_processor, fixtures_with_odds
+            # Load fixtures
+            fixtures_df = self.container.file_adapter.read_csv(
+                "fixtures_ppi_and_odds.csv"
             )
+            print(f"Loaded {len(fixtures_df)} fixtures")
 
-            if not zsd_predictions:
-                print("No ZSD predictions generated")
+            # Generate predictions using the orchestrator
+            results = self.container.pipeline.run_full_prediction_pipeline()
+
+            if not results["predictions"]:
+                print("No predictions generated")
                 return False
 
-            # Process and save predictions
-            return self._process_zsd_results(zsd_predictions)
+            # Display results
+            self._display_results(results)
+            return True
 
-        except FileNotFoundError as e:
-            print(f"Required file not found: {e}")
-            return False
         except Exception as e:
             print(f"Error in ZSD predictions: {e}")
             import traceback
@@ -89,75 +117,29 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
-    def _process_zsd_results(self, zsd_predictions) -> bool:
-        """Process and save ZSD prediction results."""
-        zsd_df = pd.DataFrame(zsd_predictions)
-
-        # Save all predictions
-        output_file = "latest_zsd_enhanced.csv"
-        zsd_df.to_csv(output_file, index=False)
-        print(f"Saved {len(zsd_df)} predictions to {output_file}")
-
-        # Extract betting candidates
-        betting_candidates = zsd_df[zsd_df["Is_Betting_Candidate"] == True]
-
-        # Always display and save candidates (even if empty)
-        self._display_betting_candidates(betting_candidates)
-
-        candidates_file = "zsd_betting_candidates.csv"
-        betting_candidates.to_csv(candidates_file, index=False)
-        print(
-            f"Saved {len(betting_candidates)} betting candidates to {candidates_file}"
-        )
-
-        # Display summary
-        self._display_prediction_summary(zsd_df, betting_candidates)
-        return True
-
-    def _validate_mode(self, mode: str) -> bool:
-        """Validate mode and show any issues."""
-        is_valid, errors, warnings = self.validator.validate_mode(mode)
-
-        if warnings:
-            print("Warnings:")
-            for warning in warnings:
-                print(f"  - {warning}")
-            print()
-
-        if errors:
-            print("Errors:")
-            for error in errors:
-                print(f"  - {error}")
-            print("Cannot proceed with current mode. Please fix the issues above.")
-            return False
-
-        return True
-
     def run_parameter_optimization(self) -> bool:
-        """Run ZSD parameter optimization for all leagues."""
-        if not self._validate_mode("optimize"):
-            return False
-
+        """Run ZSD parameter optimization for all leagues"""
         print(f"{'=' * 60}\r\nRUNNING ZSD PARAMETER OPTIMIZATION\r\n{'=' * 60}\r\n")
 
         try:
-            # Check if historical data exists
-            historical_file = "historical_ppi_and_odds.csv"
-            if not Path(historical_file).exists():
+            if not self.container.file_adapter.file_exists(
+                "historical_ppi_and_odds.csv"
+            ):
                 print(
-                    f"Error: {historical_file} not found. Please run 'historical_ppi' first."
+                    "Error: historical_ppi_and_odds.csv not found. Please run 'historical_ppi' first."
                 )
                 return False
 
-            zsd_processor = self._initialize_zsd()
-            periodic_parameter_optimization(zsd_processor)
+            # Get all available leagues
+            historical_df = self.container.file_adapter.read_csv(
+                "historical_ppi_and_odds.csv"
+            )
+            leagues = historical_df["League"].unique().tolist()
+
+            self.container.optimize_models_uc.execute(leagues)
             print("Parameter optimization completed successfully")
             return True
 
-        except FileNotFoundError as e:
-            print(f"Required file not found: {e}")
-            print("Please run 'historical_ppi' mode first to generate historical data.")
-            return False
         except Exception as e:
             print(f"Error in parameter optimization: {e}")
             import traceback
@@ -165,8 +147,63 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
+    def run_latest_ppi(self) -> bool:
+        """Generate latest PPI data and merge with odds using the new service"""
+        print(f"{'=' * 60}\r\nGENERATING LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
+
+        try:
+            # Use the new league processing service
+            ppi_all_leagues = self.container.league_processing_service.process_latest_ppi_for_all_leagues()
+
+            if not ppi_all_leagues:
+                print("No PPI data generated")
+                return False
+
+            # Save PPI data
+            import pandas as pd
+
+            ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
+            self.container.file_adapter.write_csv(ppi_latest, "latest_ppi.csv")
+            print(f"Saved {len(ppi_latest)} PPI records to latest_ppi.csv")
+
+            # Merge with odds data
+            merge_future_odds_data()
+            print("Successfully merged PPI data with odds")
+
+            return True
+
+        except Exception as e:
+            print(f"Error generating latest PPI: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return False
+
+    def run_historical_ppi(self) -> bool:
+        """Generate historical PPI data and merge with odds using the new service"""
+        print(f"{'=' * 60}\r\nGENERATING HISTORICAL PPI DATA\r\n{'=' * 60}\r\n")
+
+        try:
+            # Use the new league processing service
+            historical_ppi = self.container.league_processing_service.process_historical_ppi_for_all_leagues()
+
+            self.container.file_adapter.write_csv(historical_ppi, "historical_ppi.csv")
+            print(f"Saved {len(historical_ppi)} historical PPI records")
+
+            # Merge with odds data
+            merge_historical_odds_data()
+            print("Successfully merged historical PPI data with odds")
+            return True
+
+        except Exception as e:
+            print(f"Error generating historical PPI: {e}")
+            import traceback
+
+            traceback.print_exc()
+            return False
+
     def run_get_data(self, season: str) -> bool:
-        """Download data for all leagues for a specific season."""
+        """Download data for all leagues for a specific season"""
         print(f"Downloading data for season: {season}")
 
         if not season or len(season.split("-")) != 2:
@@ -177,19 +214,22 @@ class BettingPipeline:
         failed_leagues = []
         successful_leagues = []
 
+        # Import here to avoid circular dependency
+        from ingestion import DataIngestion
+
+        data_ingestion = DataIngestion(config)
+
         for league in Leagues:
-            processor = LeagueProcessor(league, config)
             try:
                 print(f"Processing {league.name}...")
-                processor.get_fbref_data()
-                processor.get_fbduk_data()
+                data_ingestion.get_fbref_data(league, season)
+                data_ingestion.get_fbduk_data(league, season)
                 successful_leagues.append(league.name)
             except Exception as e:
-                print(f"Error getting data for {league.name} {season}: {e}\r\n")
+                print(f"Error getting data for {league.name} {season}: {e}")
                 failed_leagues.append(league.name)
                 continue
 
-        # Summary
         print(f"\nData download summary:")
         print(f"  Successful: {len(successful_leagues)} leagues")
         print(f"  Failed: {len(failed_leagues)} leagues")
@@ -199,190 +239,10 @@ class BettingPipeline:
 
         return len(failed_leagues) == 0
 
-    def run_latest_ppi(self) -> bool:
-        """Generate latest PPI data and merge with odds."""
-        if not self._validate_mode("latest_ppi"):
-            return False
-
-        print(f"{'=' * 60}\r\nGENERATING LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
-
-        ppi_all_leagues = []
-        failed_leagues = []
-
-        for league in Leagues:
-            print(f"Processing {league.name} ({league.value['fbref_name']})")
-
-            processor = LeagueProcessor(league, self.pipeline_config.base_config)
-
-            try:
-                ppi = processor.get_points_performance_index()
-                if ppi:
-                    ppi_all_leagues.extend(ppi)
-                    print(f"  Generated {len(ppi)} PPI records for {league.name}")
-                else:
-                    print(f"  No PPI data for {league.name}")
-            except Exception as e:
-                print(f"Error getting latest PPI for {processor.league_name}: {e}")
-                failed_leagues.append(league.name)
-                continue
-
-        if not ppi_all_leagues:
-            print("No PPI data generated")
-            return False
-
-        # Save PPI data
-        from config import END_DATE, TODAY
-
-        print(f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}")
-
-        ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
-        ppi_latest.to_csv("latest_ppi.csv", index=False)
-        print(f"Saved {len(ppi_latest)} PPI records to latest_ppi.csv")
-
-        # Merge with odds data
-        try:
-            merge_future_odds_data()
-            print(f"Successfully merged PPI data with odds")
-        except Exception as e:
-            print(f"Error merging with odds data: {e}")
-            return False
-
-        if failed_leagues:
-            print(f"Note: Failed leagues: {', '.join(failed_leagues)}")
-
-        return True
-
-    def run_historical_ppi(self) -> bool:
-        """Generate historical PPI data and merge with odds."""
-        if not self._validate_mode("historical_ppi"):
-            return False
-
-        print(f"{'=' * 60}\r\nGENERATING HISTORICAL PPI DATA\r\n{'=' * 60}\r\n")
-
-        try:
-            historical_ppi = get_historical_ppi(self.pipeline_config.base_config)
-
-            # Handle matches terminated during season more generally if needs be
-            historical_ppi = historical_ppi[
-                ~historical_ppi["Home"].eq("Reus") & ~historical_ppi["Away"].eq("Reus")
-            ]
-
-            historical_ppi.to_csv("historical_ppi.csv", index=False)
-            print(f"Saved {len(historical_ppi)} historical PPI records")
-
-            # Merge with odds data
-            merge_historical_odds_data()
-            print(f"Successfully merged historical PPI data with odds")
-            return True
-
-        except Exception as e:
-            print(f"Error generating historical PPI: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return False
-
-    def _display_betting_candidates(self, betting_candidates):
-        """Display betting candidates in a formatted way with enhanced information."""
-        if len(betting_candidates) == 0:
-            print("No ZSD betting candidates found with current thresholds")
-            return
-
-        print(f"\nFound {len(betting_candidates)} enhanced ZSD betting candidates:")
-        print("-" * 100)
-
-        # Sort by edge (highest first)
-        betting_candidates = betting_candidates.sort_values("Edge", ascending=False)
-
-        max_display = min(
-            len(betting_candidates), self.pipeline_config.max_recommendations
-        )
-
-        for idx, candidate in betting_candidates.head(max_display).iterrows():
-            print(f"{candidate['Home']} vs {candidate['Away']} ({candidate['League']})")
-            print(f"  Date: {candidate['Date']}")
-
-            bet_type = candidate.get("Bet_Type", "N/A")
-            edge = candidate.get("Edge", 0)
-            soft_odds = candidate.get("Soft_Odds", 0)
-
-            print(
-                f"  Recommended Bet: {bet_type} at {soft_odds:.2f} (Edge: {edge:.3f})"
-            )
-
-            # Display all prediction methods
-            print(f"  Model Predictions:")
-            print(
-                f"    Poisson:  H={candidate.get('Poisson_Prob_H', 0):.3f}, "
-                f"D={candidate.get('Poisson_Prob_D', 0):.3f}, "
-                f"A={candidate.get('Poisson_Prob_A', 0):.3f}"
-            )
-            print(
-                f"    ZIP:      H={candidate.get('ZIP_Prob_H', 0):.3f}, "
-                f"D={candidate.get('ZIP_Prob_D', 0):.3f}, "
-                f"A={candidate.get('ZIP_Prob_A', 0):.3f}"
-            )
-            print(
-                f"    MOV:      H={candidate.get('MOV_Prob_H', 0):.3f}, "
-                f"D={candidate.get('MOV_Prob_D', 0):.3f}, "
-                f"A={candidate.get('MOV_Prob_A', 0):.3f}"
-            )
-
-            # Display market analysis
-            print(f"  Market Analysis:")
-            print(
-                f"    Model Prob: {candidate.get('Model_Prob', 0):.3f}, "
-                f"Market Prob: {candidate.get('Market_Prob', 0):.3f}"
-            )
-            print(
-                f"    Fair Odds: {candidate.get('Fair_Odds_Selected', 0):.2f}, "
-                f"Sharp Odds: {candidate.get('Sharp_Odds', 0):.2f}"
-            )
-
-            if "PPI_Diff" in candidate:
-                print(f"  PPI_Diff: {candidate['PPI_Diff']:.3f}")
-            print()
-
-        if len(betting_candidates) > max_display:
-            print(f"... and {len(betting_candidates) - max_display} more candidates")
-
-    def _display_prediction_summary(self, zsd_df, betting_candidates):
-        """Display prediction summary statistics."""
-        print(f"\nZSD PREDICTION SUMMARY:")
-        print(f"Total predictions: {len(zsd_df)}")
-        print(f"Betting candidates: {len(betting_candidates)}")
-
-        if len(betting_candidates) > 0:
-            avg_edge = betting_candidates["Edge"].mean()
-            max_edge = betting_candidates["Edge"].max()
-            print(f"Average edge: {avg_edge:.3f}")
-            print(f"Maximum edge: {max_edge:.3f}")
-
-            # Show distribution of bet types
-            bet_type_dist = betting_candidates["Bet_Type"].value_counts()
-            print(f"Bet type distribution: {bet_type_dist.to_dict()}")
-
-        # Show distribution by league
-        if len(zsd_df) > 0:
-            league_summary = (
-                zsd_df.groupby("League")
-                .agg({"Is_Betting_Candidate": "sum", "ZIP_Prob_H": "count"})
-                .rename(
-                    columns={
-                        "ZIP_Prob_H": "Total_Matches",
-                        "Is_Betting_Candidate": "Betting_Candidates",
-                    }
-                )
-            )
-
-            print(f"\nBy League:")
-            print(league_summary)
-
-    def run_backtest_validation(self, betting_csv, predictions_csv):
-        """Run comprehensive backtest validation."""
+    def run_backtest_validation(self, betting_csv: str, predictions_csv: str) -> bool:
+        """Run comprehensive backtest validation"""
         print("Running comprehensive backtest validation...")
 
-        # Check if files exist
         if not Path(betting_csv).exists():
             print(f"Error: Betting results file not found: {betting_csv}")
             return False
@@ -392,36 +252,19 @@ class BettingPipeline:
             return False
 
         try:
-            # 1. Main validation
+            # Use legacy validation system for now
+            from utils.pipeline_config import PipelineConfig
+
+            pipeline_config = PipelineConfig(self.config)
+
             validation_result = validate_zsd_backtest_results(
-                betting_csv, predictions_csv, self.pipeline_config
+                betting_csv, predictions_csv, pipeline_config
             )
 
             if validation_result:
                 print(f"\nValidation complete!")
                 print(f"Valid: {validation_result.is_valid}")
                 print(f"Confidence: {validation_result.confidence_score:.2f}")
-
-            # 2. Manual inspection helper
-            print(f"\nCreating manual inspection helper...")
-            manual_bet_inspection_helper(betting_csv, n_samples=50)
-
-            # 3. Additional validation checks
-            print(f"{'=' * 60}\r\nADDITIONAL VALIDATION CHECKS\r\n{'=' * 60}\r\n")
-
-            # Market efficiency check
-            analyze_market_efficiency_violations(betting_csv)
-
-            # Random betting benchmark
-            benchmark_against_random_betting(betting_csv)
-
-            # Cross-validation note
-            print(f"{'=' * 60}\r\nRECOMMENDED ADDITIONAL CHECKS\r\n{'=' * 60}\r\n")
-            print("1. Run backtest on different time periods")
-            print("2. Test on different leagues separately")
-            print("3. Use walk-forward validation")
-            print("4. Check results against betting exchange data")
-            print("5. Paper trade for a few weeks before going live")
 
             return True
 
@@ -432,10 +275,151 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
+    def _initialize_models(self):
+        """Initialize prediction models for all leagues"""
+        # Load historical data
+        historical_df = self.container.file_adapter.read_csv(
+            "historical_ppi_and_odds.csv"
+        )
+
+        # Fit models for all leagues
+        print("Fitting models for all leagues...")
+        for league in historical_df["League"].unique():
+            self.container.model_manager.fit_league_model(historical_df, league)
+
+        # Create a unified prediction service that works with the model manager
+        prediction_service = ModelManagerPredictionService(self.container.model_manager)
+
+        # Initialize the generate predictions use case
+        self.container.generate_predictions_uc = GeneratePredictionsUseCase(
+            prediction_service,
+            self.container.prediction_repository,
+            self.container.match_repository,
+        )
+
+        # Initialize the pipeline orchestrator
+        self.container.pipeline = PipelineOrchestrator(
+            self.container.generate_predictions_uc,
+            self.container.calculate_edges_uc,
+            self.container.optimize_models_uc,
+            self.container.ingest_data_uc,
+        )
+
+    def _display_results(self, results):
+        """Display prediction and betting results"""
+        predictions = results["predictions"]
+        betting_candidates = results["betting_candidates"]
+
+        print(f"\nZSD PREDICTION SUMMARY:")
+        print(f"Total predictions: {len(predictions)}")
+        print(f"Betting candidates: {len(betting_candidates)}")
+
+        if betting_candidates:
+            print(f"\nFound {len(betting_candidates)} enhanced ZSD betting candidates:")
+            print("-" * 100)
+
+            # Sort by edge (highest first)
+            sorted_candidates = sorted(
+                betting_candidates, key=lambda x: x["Edge"], reverse=True
+            )
+
+            for candidate in sorted_candidates[: min(20, len(sorted_candidates))]:
+                print(
+                    f"{candidate['Home']} vs {candidate['Away']} ({candidate['League']})"
+                )
+                print(f"  Date: {candidate['Date']}")
+                print(
+                    f"  Recommended Bet: {candidate['Bet_Type']} at {candidate.get('Soft_Odds', 0):.2f} (Edge: {candidate['Edge']:.3f})"
+                )
+                print()
+
+
+class ModelManagerPredictionService:
+    """Adapter to make ModelManager compatible with PredictionService interface"""
+
+    def __init__(self, model_manager: ModelManager):
+        self.model_manager = model_manager
+
+    def generate_predictions(self, matches):
+        """Generate predictions for matches using the model manager"""
+        import pandas as pd
+
+        # Convert matches to DataFrame format expected by model manager
+        match_data = []
+        for match in matches:
+            match_data.append(
+                {
+                    "Date": match.date,
+                    "League": match.home_team.league,
+                    "Home": match.home_team.name,
+                    "Away": match.away_team.name,
+                    "Wk": match.week,
+                }
+            )
+
+        fixtures_df = pd.DataFrame(match_data)
+
+        # Use model manager to generate predictions
+        predictions_df = self.model_manager.predict_matches(fixtures_df)
+
+        if len(predictions_df) == 0:
+            print("No predictions generated by model manager")
+            return []
+
+        # Convert back to domain objects
+        predictions = []
+        for _, row in predictions_df.iterrows():
+            # Find corresponding match
+            match = next(
+                (
+                    m
+                    for m in matches
+                    if m.home_team.name == row["Home"]
+                    and m.away_team.name == row["Away"]
+                ),
+                None,
+            )
+
+            if match is None:
+                continue
+
+            probabilities = Probabilities(
+                home=float(row.get("ZIP_Prob_H", 0.33)),
+                draw=float(row.get("ZIP_Prob_D", 0.33)),
+                away=float(row.get("ZIP_Prob_A", 0.34)),
+            )
+
+            # Extract all method predictions for metadata
+            all_methods = {}
+            for method in ["Poisson", "Zip", "Mov"]:
+                all_methods[method.lower()] = {
+                    "prob_home": row.get(f"{method}_Prob_H", 0.33),
+                    "prob_draw": row.get(f"{method}_Prob_D", 0.33),
+                    "prob_away": row.get(f"{method}_Prob_A", 0.34),
+                }
+
+            prediction = Prediction(
+                match=match,
+                probabilities=probabilities,
+                lambda_home=row.get("ZSD_Lambda_H", 1.5),
+                lambda_away=row.get("ZSD_Lambda_A", 1.2),
+                model_type="ZSD",
+                created_at=match.date,
+                metadata={"all_methods": all_methods},
+            )
+            predictions.append(prediction)
+
+        return predictions
+
+    def is_fitted(self) -> bool:
+        return len(self.model_manager.models) > 0
+
 
 def main():
-    """Main entry point for the betting pipeline."""
+    """Main entry point for the betting pipeline"""
     if len(sys.argv) > 1 and sys.argv[1] in ["-h", "--help", "help"]:
+        from utils.pipeline_config import print_pipeline_help
+
         print_pipeline_help()
         return
 
@@ -445,14 +429,17 @@ def main():
         mode = sys.argv[1].lower()
 
         if mode == "status":
-            pipeline.pipeline_config.print_status_report()
+            from utils.pipeline_config import PipelineConfig
+
+            config = PipelineConfig(pipeline.config)
+            config.print_status_report()
 
         elif mode == "get_data":
             if len(sys.argv) > 2:
                 season = sys.argv[2]
                 pipeline.run_get_data(season)
             else:
-                print("Usage: uv run app/main.py get_data <season>")
+                print("Usage: python main.py get_data <season>")
 
         elif mode == "latest_ppi":
             pipeline.run_latest_ppi()
@@ -467,15 +454,17 @@ def main():
             pipeline.run_parameter_optimization()
 
         elif mode == "validate":
-            betting_results_directory = "optimisation_validation/betting_results"
-            prediction_results_directory = "optimisation_validation/prediction_results"
             if len(sys.argv) > 3:
+                betting_results_directory = "optimisation_validation/betting_results"
+                prediction_results_directory = (
+                    "optimisation_validation/prediction_results"
+                )
                 betting_filename = f"{betting_results_directory}/{sys.argv[2]}"
                 prediction_filename = f"{prediction_results_directory}/{sys.argv[3]}"
                 pipeline.run_backtest_validation(betting_filename, prediction_filename)
             else:
                 print(
-                    "Usage: uv run app/main.py validate <betting_file> <predictions_file>"
+                    "Usage: python main.py validate <betting_file> <predictions_file>"
                 )
 
         elif mode == "predict":
@@ -483,6 +472,8 @@ def main():
 
         else:
             print(f"Unknown mode: {mode}")
+            from utils.pipeline_config import print_pipeline_help
+
             print_pipeline_help()
 
 
