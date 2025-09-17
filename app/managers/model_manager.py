@@ -1,5 +1,5 @@
 """
-Model manager for handling multiple league models.
+Fixed model manager for handling multiple league models with correct method predictions.
 """
 
 from pathlib import Path
@@ -14,7 +14,7 @@ from utils.config_manager import ConfigManager
 
 
 class ModelManager:
-    """Manages ZSD Poisson models for multiple leagues."""
+    """Manages ZSD Poisson models for multiple leagues with proper method handling."""
 
     def __init__(self, global_config, config_dir: Path = Path("zsd_configs")):
         self.global_config = global_config
@@ -74,7 +74,7 @@ class ModelManager:
             return None
 
     def predict_matches(self, fixtures_df: pd.DataFrame) -> pd.DataFrame:
-        """Generate predictions for upcoming matches."""
+        """Generate predictions for upcoming matches with all methods."""
         predictions = []
         previous_season = self.global_config.previous_season
 
@@ -98,8 +98,9 @@ class ModelManager:
                 continue
 
             try:
-                pred_dict = self._generate_match_predictions(match, model)
-                predictions.append(pred_dict)
+                pred_dict = self._generate_comprehensive_match_predictions(match, model)
+                if pred_dict:
+                    predictions.append(pred_dict)
             except Exception as e:
                 print(f"Error predicting {match['Home']} vs {match['Away']}: {e}")
 
@@ -110,109 +111,134 @@ class ModelManager:
     ) -> bool:
         """Checks if teams have been relegated or promoted to/from previous season"""
         previous_season_file_path = f"{self.global_config.fbref_data_dir}/{league}/{league}_{previous_season}.csv"
-        if not teams.issubset(pd.read_csv(previous_season_file_path)["Home"]):
-            return True
-        return False
+        try:
+            previous_teams = set(pd.read_csv(previous_season_file_path)["Home"])
+            return not teams.issubset(previous_teams)
+        except FileNotFoundError:
+            print(f"Warning: Could not find previous season data for {league}")
+            return False
 
-    def _generate_match_predictions(self, match, model) -> Dict:
-        """Generate all prediction types for a single match."""
+    def _generate_comprehensive_match_predictions(self, match, model) -> Dict:
+        """Generate predictions for all methods with proper probability extraction."""
         home_team, away_team = match["Home"], match["Away"]
 
-        # Get predictions for all methods
-        methods = ["poisson", "zip", "mov"]
-        predictions = {
-            method: model.predict_match(home_team, away_team, method=method)
-            for method in methods
-        }
+        try:
+            # Get predictions for all available methods
+            all_predictions = model.predict_all_methods(home_team, away_team)
 
-        # Build base prediction dictionary
-        pred_dict = {
-            "Date": match["Date"],
-            "League": match.get("League"),
-            "Home": home_team,
-            "Away": away_team,
-        }
+            if not all_predictions:
+                print(f"No predictions available for {home_team} vs {away_team}")
+                return None
 
-        # Add predictions for each method
-        method_names = ["Poisson", "ZIP", "MOV"]
-        for method, name in zip(methods, method_names):
-            pred = predictions[method]
-            pred_dict.update(
-                {
-                    f"{name}_Prob_H": pred.prob_home_win,
-                    f"{name}_Prob_D": pred.prob_draw,
-                    f"{name}_Prob_A": pred.prob_away_win,
-                }
-            )
-
-        # Add backward compatibility fields (using ZIP as primary)
-        zip_pred = predictions["zip"]
-        pred_dict.update(
-            {
-                "ZSD_Prob_H": zip_pred.prob_home_win,
-                "ZSD_Prob_D": zip_pred.prob_draw,
-                "ZSD_Prob_A": zip_pred.prob_away_win,
-                "ZSD_Lambda_H": zip_pred.lambda_home,
-                "ZSD_Lambda_A": zip_pred.lambda_away,
-                "ZSD_MOV": zip_pred.mov_prediction,
-                "ZSD_MOV_SE": zip_pred.mov_std_error,
-                "Model_Type": zip_pred.model_type,
+            # Build base prediction dictionary
+            pred_dict = {
+                "Date": match["Date"],
+                "League": match.get("League"),
+                "Home": home_team,
+                "Away": away_team,
             }
-        )
 
-        # Add fixture columns if present
-        fixture_cols = [
-            "Wk",
-            "PSH",
-            "PSD",
-            "PSA",
-            "PSCH",
-            "PSCD",
-            "PSCA",
-            "B365H",
-            "B365D",
-            "B365A",
-            "B365CH",
-            "B365CD",
-            "B365CA",
-            "PPI_Diff",
-            "hPPI",
-            "aPPI",
-        ]
+            # Add predictions for each method with proper naming
+            method_mapping = {"poisson": "Poisson", "zip": "Zip", "mov": "Mov"}
 
-        for col in fixture_cols:
-            if col in match.index:
-                pred_dict[col] = match[col]
+            for method_key, method_name in method_mapping.items():
+                if method_key in all_predictions:
+                    pred = all_predictions[method_key]
+                    pred_dict.update(
+                        {
+                            f"{method_name}_Prob_H": pred.prob_home_win,
+                            f"{method_name}_Prob_D": pred.prob_draw,
+                            f"{method_name}_Prob_A": pred.prob_away_win,
+                        }
+                    )
+                else:
+                    # Add default values if method not available
+                    pred_dict.update(
+                        {
+                            f"{method_name}_Prob_H": 0.33,
+                            f"{method_name}_Prob_D": 0.34,
+                            f"{method_name}_Prob_A": 0.33,
+                        }
+                    )
 
-        # Add betting analysis if odds are available
-        pred_series = pd.Series(pred_dict)
-        betting_metrics = self.betting_service.analyze_prediction_row(pred_series)
+            # Use ZIP as primary method for backward compatibility
+            primary_method = (
+                "zip" if "zip" in all_predictions else list(all_predictions.keys())[0]
+            )
+            primary_pred = all_predictions[primary_method]
 
-        if betting_metrics:
-            # Add betting metrics to prediction
-            betting_dict = self.betting_service._metrics_to_dict(betting_metrics)
-            pred_dict.update(betting_dict)
-        else:
-            # Add default values if no betting analysis possible
             pred_dict.update(
                 {
-                    "Bet_Type": None,
-                    "Edge": 0.0,
-                    "Model_Prob": 0.0,
-                    "Market_Prob": 0.0,
-                    "Sharp_Odds": 0.0,
-                    "Soft_Odds": 0.0,
-                    "Fair_Odds_Selected": 0.0,
-                    "EV_H": 0.0,
-                    "EV_D": 0.0,
-                    "EV_A": 0.0,
-                    "Prob_Edge_H": 0.0,
-                    "Prob_Edge_D": 0.0,
-                    "Prob_Edge_A": 0.0,
-                    "Kelly_H": 0.0,
-                    "Kelly_D": 0.0,
-                    "Kelly_A": 0.0,
+                    "ZSD_Prob_H": primary_pred.prob_home_win,
+                    "ZSD_Prob_D": primary_pred.prob_draw,
+                    "ZSD_Prob_A": primary_pred.prob_away_win,
+                    "ZSD_Lambda_H": primary_pred.lambda_home,
+                    "ZSD_Lambda_A": primary_pred.lambda_away,
+                    "ZSD_MOV": primary_pred.mov_prediction,
+                    "ZSD_MOV_SE": primary_pred.mov_std_error,
+                    "Model_Type": primary_pred.model_type,
                 }
             )
 
-        return pred_dict
+            # Add fixture columns if present
+            fixture_cols = [
+                "Wk",
+                "PSH",
+                "PSD",
+                "PSA",
+                "PSCH",
+                "PSCD",
+                "PSCA",
+                "B365H",
+                "B365D",
+                "B365A",
+                "B365CH",
+                "B365CD",
+                "B365CA",
+                "PPI_Diff",
+                "hPPI",
+                "aPPI",
+            ]
+
+            for col in fixture_cols:
+                if col in match.index:
+                    pred_dict[col] = match[col]
+
+            # Add betting analysis if odds are available
+            pred_series = pd.Series(pred_dict)
+            betting_metrics = self.betting_service.analyze_prediction_row(pred_series)
+
+            if betting_metrics:
+                # Add core betting metrics
+                pred_dict.update(
+                    {
+                        "Bet_Type": betting_metrics.get("bet_type"),
+                        "Edge": betting_metrics.get("edge", 0.0),
+                        "Model_Prob": betting_metrics.get("model_prob", 0.0),
+                        "Market_Prob": betting_metrics.get("market_prob", 0.0),
+                        "Sharp_Odds": betting_metrics.get("sharp_odds", 0.0),
+                        "Soft_Odds": betting_metrics.get("soft_odds", 0.0),
+                        "Fair_Odds_Selected": betting_metrics.get("fair_odds", 0.0),
+                    }
+                )
+            else:
+                # Add default betting values
+                pred_dict.update(
+                    {
+                        "Bet_Type": None,
+                        "Edge": 0.0,
+                        "Model_Prob": 0.0,
+                        "Market_Prob": 0.0,
+                        "Sharp_Odds": 0.0,
+                        "Soft_Odds": 0.0,
+                        "Fair_Odds_Selected": 0.0,
+                    }
+                )
+
+            return pred_dict
+
+        except Exception as e:
+            print(
+                f"Error in comprehensive prediction for {home_team} vs {away_team}: {e}"
+            )
+            return None

@@ -3,13 +3,13 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 from domains.betting.services import BettingAnalysisService
-from sklearn.metrics import accuracy_score, log_loss
+from sklearn.metrics import log_loss
 
 from .entities import BacktestConfig, BacktestResult, BacktestSummary
 
 
 class BacktestingService:
-    """Domain service for backtesting model performance and betting strategies."""
+    """Enhanced backtesting service with proper temporal validation."""
 
     def __init__(self, config: BacktestConfig):
         self.config = config
@@ -26,9 +26,9 @@ class BacktestingService:
         league: str,
         model_params: Optional[Dict] = None,
     ) -> BacktestSummary:
-        """Run a cross-season backtest for a specific league."""
+        """Run a temporally valid cross-season backtest."""
 
-        # Prepare data
+        # Prepare data with proper temporal ordering
         train_data, test_data = self._prepare_backtest_data(
             data, train_season, test_season, league
         )
@@ -38,7 +38,9 @@ class BacktestingService:
                 f"Insufficient data for {league} {train_season}/{test_season}"
             )
 
-        # Initialize results storage
+        # Sort test data by date to ensure temporal order
+        test_data = test_data.sort_values(["Date", "Wk"]).reset_index(drop=True)
+
         all_predictions = []
         betting_results = []
         bankroll = 100.0
@@ -46,45 +48,45 @@ class BacktestingService:
         print(f"Backtesting {league}: {train_season} -> {test_season}")
         print(f"Training matches: {len(train_data)}, Test matches: {len(test_data)}")
 
-        # Get unique weeks for testing
-        test_weeks = sorted(test_data["Wk"].unique())
-
-        for week_num, week in enumerate(test_weeks, 1):
-            if week_num < self.config.min_training_weeks:
+        # Process matches chronologically
+        for idx, (_, match_row) in enumerate(test_data.iterrows()):
+            if idx < self.config.min_training_weeks:
                 continue
 
             try:
-                # Prepare training data (previous season + previous weeks in test season)
-                past_test_data = test_data[test_data["Wk"] < week]
+                # Use only data available before this match
+                available_train_data = train_data.copy()
+                available_test_data = test_data.iloc[:idx].copy()  # Only past matches
+
                 combined_training = pd.concat(
-                    [train_data, past_test_data], ignore_index=True
+                    [available_train_data, available_test_data], ignore_index=True
                 )
 
-                # Fit model
+                # Fit model on available data only
                 model = self._create_and_fit_model(
                     model_class, combined_training, model_params
                 )
 
-                # Get current week matches
-                week_matches = test_data[test_data["Wk"] == week].copy()
+                # Generate prediction for current match
+                prediction_result = self._predict_single_match(model, match_row)
 
-                # Generate predictions for the week
-                week_predictions, week_betting_results, bankroll = self._process_week(
-                    model, week_matches, bankroll
-                )
+                if prediction_result:
+                    all_predictions.append(prediction_result)
 
-                all_predictions.extend(week_predictions)
-                betting_results.extend(week_betting_results)
-
-                print(
-                    f"Week {week}: {len(week_predictions)} predictions, {len(week_betting_results)} bets"
-                )
+                    # Evaluate betting opportunity
+                    betting_result, bankroll = self._evaluate_betting_opportunity(
+                        pd.Series(prediction_result),
+                        prediction_result["Actual_Outcome"],
+                        bankroll,
+                    )
+                    if betting_result:
+                        betting_results.append(betting_result)
 
             except Exception as e:
-                print(f"Error in week {week}: {str(e)}")
+                print(f"Error in match {idx}: {str(e)}")
                 continue
 
-        # Calculate final metrics
+        # Calculate summary
         predictions_df = pd.DataFrame(all_predictions)
         summary = self._calculate_backtest_summary(
             predictions_df, betting_results, bankroll
@@ -95,25 +97,28 @@ class BacktestingService:
     def _prepare_backtest_data(
         self, data: pd.DataFrame, train_season: str, test_season: str, league: str
     ) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        """Prepare and filter data for backtesting."""
+        """Prepare data ensuring no temporal leakage."""
 
-        # Filter and prepare data
+        # Filter by league and season
         train_data = (
             data[(data["Season"] == train_season) & (data["League"] == league)]
             .copy()
-            .sort_values(["Date"])
+            .sort_values(["Date", "Wk"])
         )
 
         test_data = (
             data[(data["Season"] == test_season) & (data["League"] == league)]
             .copy()
-            .sort_values(["Wk", "Date"])
+            .sort_values(["Date", "Wk"])
         )
 
-        # Remove promoted and relegated teams
-        teams_train_data = set(pd.concat([train_data["Home"], train_data["Away"]]))
-        teams_test_data = set(pd.concat([test_data["Home"], test_data["Away"]]))
-        common_teams = teams_train_data & teams_test_data
+        # Ensure teams exist in both seasons (remove promoted/relegated teams)
+        train_teams = set(pd.concat([train_data["Home"], train_data["Away"]]))
+        test_teams = set(pd.concat([test_data["Home"], test_data["Away"]]))
+        common_teams = train_teams & test_teams
+
+        if len(common_teams) < 10:  # Need reasonable number of teams
+            print(f"Warning: Only {len(common_teams)} common teams between seasons")
 
         train_data = train_data[
             train_data["Home"].isin(common_teams)
@@ -129,7 +134,7 @@ class BacktestingService:
     def _create_and_fit_model(
         self, model_class, training_data: pd.DataFrame, model_params: Optional[Dict]
     ):
-        """Create and fit a model instance."""
+        """Create and fit model ensuring temporal validity."""
         model_params = model_params or {}
 
         if isinstance(model_class, type):
@@ -139,38 +144,10 @@ class BacktestingService:
         else:
             model = model_class(**model_params)
 
+        # Ensure training data is sorted chronologically
+        training_data = training_data.sort_values(["Date", "Wk"]).reset_index(drop=True)
         model.fit(training_data)
         return model
-
-    def _process_week(
-        self, model, week_matches: pd.DataFrame, bankroll: float
-    ) -> Tuple[List[Dict], List[BacktestResult], float]:
-        """Process predictions and betting for a single week."""
-
-        week_predictions = []
-        week_betting_results = []
-
-        for _, match in week_matches.iterrows():
-            try:
-                # Generate prediction
-                prediction_result = self._predict_single_match(model, match)
-                if prediction_result:
-                    week_predictions.append(prediction_result)
-
-                    # Evaluate betting opportunity
-                    betting_result, bankroll = self._evaluate_betting_opportunity(
-                        pd.Series(prediction_result),
-                        prediction_result["Actual_Outcome"],
-                        bankroll,
-                    )
-                    if betting_result:
-                        week_betting_results.append(betting_result)
-
-            except Exception as e:
-                print(f"Error processing match {match['Home']} vs {match['Away']}: {e}")
-                continue
-
-        return week_predictions, week_betting_results, bankroll
 
     def _predict_single_match(self, model, match_row: pd.Series) -> Optional[Dict]:
         """Generate prediction for a single match."""
@@ -178,24 +155,24 @@ class BacktestingService:
             home_team = match_row["Home"]
             away_team = match_row["Away"]
 
+            # Check if teams are known to model
+            if (
+                not hasattr(model, "team_index")
+                or home_team not in model.team_index
+                or away_team not in model.team_index
+            ):
+                return None
+
             # Get predictions for all methods
             predictions = self._get_all_method_predictions(model, home_team, away_team)
 
-            # Extract odds
-            sharp_odds = [
-                match_row.get("PSH", np.nan),
-                match_row.get("PSD", np.nan),
-                match_row.get("PSA", np.nan),
-            ]
+            # Extract market odds with validation
+            market_data = self._extract_market_data(match_row)
+            if not market_data:
+                return None
 
-            soft_odds = [
-                match_row.get("B365H", np.nan),
-                match_row.get("B365D", np.nan),
-                match_row.get("B365A", np.nan),
-            ]
-
-            # Calculate fair probabilities from sharp odds
-            fair_probs = self._calculate_fair_probabilities(sharp_odds)
+            # Calculate fair probabilities
+            fair_probs = self._calculate_fair_probabilities(market_data["sharp_odds"])
 
             # Determine actual outcome
             actual_outcome = self._get_actual_outcome(match_row)
@@ -220,15 +197,15 @@ class BacktestingService:
                 "MOV_Prob_D": predictions["mov"]["prob_draw"],
                 "MOV_Prob_A": predictions["mov"]["prob_away_win"],
                 # Market data
-                "PSH": sharp_odds[0],
-                "PSD": sharp_odds[1],
-                "PSA": sharp_odds[2],
-                "B365H": soft_odds[0],
-                "B365D": soft_odds[1],
-                "B365A": soft_odds[2],
-                "Fair_Prob_H": fair_probs[0],
-                "Fair_Prob_D": fair_probs[1],
-                "Fair_Prob_A": fair_probs[2],
+                "PSH": market_data["sharp_odds"][0],
+                "PSD": market_data["sharp_odds"][1],
+                "PSA": market_data["sharp_odds"][2],
+                "B365H": market_data["soft_odds"][0],
+                "B365D": market_data["soft_odds"][1],
+                "B365A": market_data["soft_odds"][2],
+                "Fair_Prob_H": fair_probs[0] if fair_probs else np.nan,
+                "Fair_Prob_D": fair_probs[1] if fair_probs else np.nan,
+                "Fair_Prob_A": fair_probs[2] if fair_probs else np.nan,
                 # Model outputs
                 "Lambda_Home": predictions["zip"]["lambda_home"],
                 "Lambda_Away": predictions["zip"]["lambda_away"],
@@ -240,28 +217,38 @@ class BacktestingService:
             )
             return None
 
+    def _extract_market_data(self, match_row: pd.Series) -> Optional[Dict]:
+        """Extract and validate market odds data."""
+        sharp_cols = ["PSH", "PSD", "PSA"]
+        soft_cols = ["B365H", "B365D", "B365A"]
+
+        # Check if required columns exist and have valid values
+        sharp_odds = []
+        soft_odds = []
+
+        for col in sharp_cols:
+            val = match_row.get(col)
+            if pd.isna(val) or val <= 1.0:
+                return None
+            sharp_odds.append(val)
+
+        for col in soft_cols:
+            val = match_row.get(col)
+            if pd.isna(val) or val <= 1.0:
+                return None
+            soft_odds.append(val)
+
+        return {"sharp_odds": sharp_odds, "soft_odds": soft_odds}
+
     def _get_all_method_predictions(
         self, model, home_team: str, away_team: str
     ) -> Dict[str, Dict]:
         """Get predictions for all methods from the model."""
         try:
-            if home_team not in model.team_index or away_team not in model.team_index:
-                # Return default predictions for unknown teams
-                default_prediction = {
-                    "prob_home_win": 0.33,
-                    "prob_draw": 0.33,
-                    "prob_away_win": 0.34,
-                    "lambda_home": 1.5,
-                    "lambda_away": 1.2,
-                }
-                return {
-                    "poisson": default_prediction.copy(),
-                    "zip": default_prediction.copy(),
-                    "mov": default_prediction.copy(),
-                }
-
             predictions = {}
-            for method in ["poisson", "zip", "mov"]:
+            methods = ["poisson", "zip", "mov"]
+
+            for method in methods:
                 try:
                     pred = model.predict_match(home_team, away_team, method=method)
                     predictions[method] = {
@@ -271,7 +258,8 @@ class BacktestingService:
                         "lambda_home": pred.lambda_home,
                         "lambda_away": pred.lambda_away,
                     }
-                except:
+                except Exception:
+                    # Fallback to basic calculation
                     predictions[method] = self._calculate_basic_prediction(
                         model, home_team, away_team
                     )
@@ -280,6 +268,7 @@ class BacktestingService:
 
         except Exception as e:
             print(f"Error in _get_all_method_predictions: {e}")
+            # Return default predictions
             default_prediction = {
                 "prob_home_win": 0.33,
                 "prob_draw": 0.33,
@@ -288,20 +277,19 @@ class BacktestingService:
                 "lambda_away": 1.2,
             }
             return {
-                "poisson": default_prediction.copy(),
-                "zip": default_prediction.copy(),
-                "mov": default_prediction.copy(),
+                method: default_prediction.copy()
+                for method in ["poisson", "zip", "mov"]
             }
 
     def _calculate_basic_prediction(
         self, model, home_team: str, away_team: str
     ) -> Dict:
-        """Calculate basic prediction when advanced methods aren't available."""
+        """Calculate basic prediction when advanced methods fail."""
         try:
             home_idx = model.team_index[home_team]
             away_idx = model.team_index[away_team]
 
-            # Calculate expected goals using model parameters
+            # Calculate expected goals
             home_strength = (
                 model.home_advantage
                 + model.attack_ratings[home_idx]
@@ -316,10 +304,10 @@ class BacktestingService:
             lambda_home = max(0.1, 1.5 + 0.5 * home_strength)
             lambda_away = max(0.1, 1.2 + 0.5 * away_strength)
 
-            # Simple outcome probability calculation
+            # Simple Poisson outcome calculation
             from scipy.stats import poisson
 
-            max_goals = getattr(model.config, "max_goals", 15)
+            max_goals = getattr(model.config, "max_goals", 10)
             prob_matrix = np.zeros((max_goals + 1, max_goals + 1))
 
             for h_goals in range(max_goals + 1):
@@ -328,30 +316,17 @@ class BacktestingService:
                         h_goals, lambda_home
                     ) * poisson.pmf(a_goals, lambda_away)
 
-            prob_home_win = np.sum(
-                [
-                    prob_matrix[h, a]
-                    for h in range(max_goals + 1)
-                    for a in range(max_goals + 1)
-                    if h > a
-                ]
-            )
-            prob_draw = np.sum([prob_matrix[h, h] for h in range(max_goals + 1)])
-            prob_away_win = np.sum(
-                [
-                    prob_matrix[h, a]
-                    for h in range(max_goals + 1)
-                    for a in range(max_goals + 1)
-                    if h < a
-                ]
-            )
+            # Calculate outcome probabilities
+            prob_home_win = np.sum(np.tril(prob_matrix, -1))
+            prob_draw = np.sum(np.diag(prob_matrix))
+            prob_away_win = np.sum(np.triu(prob_matrix, 1))
 
             # Normalize
-            total_prob = prob_home_win + prob_draw + prob_away_win
-            if total_prob > 0:
-                prob_home_win /= total_prob
-                prob_draw /= total_prob
-                prob_away_win /= total_prob
+            total = prob_home_win + prob_draw + prob_away_win
+            if total > 0:
+                prob_home_win /= total
+                prob_draw /= total
+                prob_away_win /= total
 
             return {
                 "prob_home_win": prob_home_win,
@@ -370,20 +345,19 @@ class BacktestingService:
                 "lambda_away": 1.2,
             }
 
-    def _calculate_fair_probabilities(self, odds: List[float]) -> List[float]:
-        """Calculate fair (no-vig) probabilities from bookmaker odds."""
+    def _calculate_fair_probabilities(self, odds: List[float]) -> Optional[List[float]]:
+        """Calculate fair probabilities from odds."""
         try:
             if any(np.isnan(odds)) or any(o <= 1.0 for o in odds):
-                return [np.nan, np.nan, np.nan]
+                return None
 
             from utils.odds_helpers import get_no_vig_odds_multiway
 
             fair_odds_tuple = get_no_vig_odds_multiway(odds)
-            fair_probs = [1 / o for o in fair_odds_tuple]
-            return fair_probs
+            return [1 / o for o in fair_odds_tuple]
 
         except Exception:
-            return [np.nan, np.nan, np.nan]
+            return None
 
     def _get_actual_outcome(self, match_row: pd.Series) -> int:
         """Get actual match outcome (0=Home, 1=Draw, 2=Away)."""
@@ -400,28 +374,34 @@ class BacktestingService:
     def _evaluate_betting_opportunity(
         self, prediction_row: pd.Series, actual_outcome: int, bankroll: float
     ) -> Tuple[Optional[BacktestResult], float]:
-        """Evaluate betting opportunity and return result."""
+        """Evaluate betting opportunity with proper edge calculation."""
         try:
+            # Use betting service to analyze the prediction
             betting_metrics = self.betting_service.analyze_prediction_row(
                 prediction_row
             )
 
             if (
-                betting_metrics is None
+                not betting_metrics
                 or betting_metrics["edge"] < self.config.betting_threshold
             ):
                 return None, bankroll
 
-            # Kelly criterion for stake sizing
-            kelly_fraction = betting_metrics["edge"] / (
-                betting_metrics["soft_odds"] - 1
-            )
-            stake = min(
-                self.config.stake_size,
-                bankroll * min(kelly_fraction, self.config.max_stake_fraction),
-            )
+            # Calculate stake using Kelly criterion with limits
+            kelly_fraction = betting_metrics.get("kelly_fraction", 0)
+            if kelly_fraction <= 0:
+                return None, bankroll
 
-            # Calculate profit based on actual outcome
+            # Apply conservative Kelly sizing
+            conservative_kelly = min(
+                kelly_fraction * 0.5, self.config.max_stake_fraction
+            )
+            stake = min(self.config.stake_size, bankroll * conservative_kelly)
+
+            if stake <= 0:
+                return None, bankroll
+
+            # Determine if bet won
             bet_outcome_map = {"Home": 0, "Draw": 1, "Away": 2}
             bet_outcome_idx = bet_outcome_map[betting_metrics["bet_type"]]
 
@@ -459,22 +439,41 @@ class BacktestingService:
         betting_results: List[BacktestResult],
         final_bankroll: float,
     ) -> BacktestSummary:
-        """Calculate comprehensive backtest summary."""
+        """Calculate comprehensive backtest summary with proper metrics."""
 
         # Model performance metrics
+        accuracy = 0.0
+        logloss = 10.0
+
         if len(predictions_df) > 0:
-            y_true = predictions_df["Actual_Outcome"].values
-            y_prob = predictions_df[["ZIP_Prob_H", "ZIP_Prob_D", "ZIP_Prob_A"]].values
+            try:
+                y_true = predictions_df["Actual_Outcome"].values
+                y_prob = predictions_df[
+                    ["ZIP_Prob_H", "ZIP_Prob_D", "ZIP_Prob_A"]
+                ].values
 
-            # Ensure probabilities sum to 1
-            y_prob = y_prob / y_prob.sum(axis=1, keepdims=True)
+                # Ensure probabilities are valid
+                valid_mask = ~np.isnan(y_prob).any(axis=1)
+                if valid_mask.sum() > 0:
+                    y_true_valid = y_true[valid_mask]
+                    y_prob_valid = y_prob[valid_mask]
 
-            y_pred = np.argmax(y_prob, axis=1)
-            accuracy = accuracy_score(y_true, y_pred)
-            logloss = log_loss(y_true, y_prob, labels=[0, 1, 2])
-        else:
-            accuracy = 0.0
-            logloss = 10.0
+                    # Normalize probabilities
+                    row_sums = y_prob_valid.sum(axis=1, keepdims=True)
+                    row_sums[row_sums == 0] = 1  # Avoid division by zero
+                    y_prob_valid = y_prob_valid / row_sums
+
+                    # Calculate metrics
+                    y_pred = np.argmax(y_prob_valid, axis=1)
+                    accuracy = np.mean(y_true_valid == y_pred)
+
+                    # Calculate log loss with epsilon for numerical stability
+                    epsilon = 1e-15
+                    y_prob_clipped = np.clip(y_prob_valid, epsilon, 1 - epsilon)
+                    logloss = log_loss(y_true_valid, y_prob_clipped, labels=[0, 1, 2])
+
+            except Exception as e:
+                print(f"Error calculating model metrics: {e}")
 
         # Betting performance metrics
         if betting_results:
