@@ -1,5 +1,6 @@
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import pandas as pd
 from utils.odds_helpers import get_no_vig_odds_multiway
 
@@ -242,7 +243,7 @@ class BettingAnalysisService:
             no_vig_odds = get_no_vig_odds_multiway(sharp_odds)
             market_probs = [1 / odd for odd in no_vig_odds]
 
-            # Get model probabilities
+            # Get model probabilities - fix attribute access
             model_probs = [
                 float(prediction.probabilities.home),
                 float(prediction.probabilities.draw),
@@ -280,6 +281,9 @@ class BettingAnalysisService:
 
         except Exception as e:
             print(f"Error analyzing prediction: {e}")
+            import traceback
+
+            traceback.print_exc()
             return None
 
     def _meets_betting_criteria(self, opportunity: BettingOpportunity) -> bool:
@@ -287,17 +291,12 @@ class BettingAnalysisService:
         # Get the probability for the recommended outcome
         if opportunity.recommended_outcome == "H":
             model_prob = float(opportunity.prediction.probabilities.home)
-        elif opportunity.recommended_outcome == "D":
-            model_prob = float(opportunity.prediction.probabilities.draw)
-        else:  # "A"
-            model_prob = float(opportunity.prediction.probabilities.away)
-
-        # Get the recommended odds
-        if opportunity.recommended_outcome == "H":
             recommended_odds = float(opportunity.market_odds.home)
         elif opportunity.recommended_outcome == "D":
+            model_prob = float(opportunity.prediction.probabilities.draw)
             recommended_odds = float(opportunity.market_odds.draw)
         else:  # "A"
+            model_prob = float(opportunity.prediction.probabilities.away)
             recommended_odds = float(opportunity.market_odds.away)
 
         return (
