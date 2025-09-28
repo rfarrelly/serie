@@ -3,7 +3,6 @@ import pandas as pd
 from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
 from metrics import TeamMetrics
-from stats import compute_points_performance_index, compute_ppg
 from utils.datetime_helpers import filter_date_range
 
 
