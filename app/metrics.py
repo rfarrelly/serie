@@ -72,6 +72,10 @@ class TeamMetrics:
         opposition = self.team_matches[["Wk", "Date", "Home"]]
         return opposition[opposition["Home"] != self.team_name]
 
+    @property
+    def latest_points_performance_index(self):
+        return round(self.points_performance_index().tail(1)["TeamPPI"].values[0], 3)
+
     @cached_property
     def home_points(self) -> pd.DataFrame:
         """Calculate home points for all teams across all weeks."""
