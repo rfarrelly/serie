@@ -2,10 +2,9 @@ import numpy as np
 import pandas as pd
 from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
+from metrics import TeamMetrics
 from stats import compute_points_performance_index, compute_ppg
 from utils.datetime_helpers import filter_date_range
-
-# from zsd_poisson_model import RegularizedZSDPoissonModel
 
 
 class LeagueProcessor:
@@ -48,8 +47,6 @@ class LeagueProcessor:
             print("No Fixtures for this date range")
             return None
 
-        home_ppg, away_ppg, total_ppg = compute_ppg(self.played_matches_df)
-
         candidates = []
 
         for fixture in fixtures.itertuples(index=False):
@@ -61,22 +58,23 @@ class LeagueProcessor:
             )
 
             try:
-                home_ppi_df = compute_points_performance_index(
-                    home_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
-                )
+                home_team_metrics = TeamMetrics(home_team, self.played_matches_df)
+                away_team_metrics = TeamMetrics(away_team, self.played_matches_df)
 
-                away_ppi_df = compute_points_performance_index(
-                    away_team, self.played_matches_df, home_ppg, away_ppg, total_ppg
-                )
+                latest_home_ppi = home_team_metrics.latest_points_performance_index
+                latest_away_ppi = away_team_metrics.latest_points_performance_index
+
+                ppi_diff = round(abs(latest_home_ppi - latest_away_ppi), 2)
+
+                home_ppg = home_team_metrics.latest_points_per_game
+                away_ppg = away_team_metrics.latest_points_per_game
+
+                home_opps_ppg = home_team_metrics.latest_opposition_points_per_game
+                away_opps_ppg = away_team_metrics.latest_opposition_points_per_game
             except:
-                print(f"Error computing PPI for {self.league_name} - {date}")
+                print(f"Error computing team metrics for {self.league_name} - {date}")
                 print(f"Continuing ...")
                 continue
-
-            home_ppi_latest = home_ppi_df.tail(1)["PPI"].values[0]
-            away_ppi_latest = away_ppi_df.tail(1)["PPI"].values[0]
-
-            ppi_diff = round(abs(home_ppi_latest - away_ppi_latest), 2)
 
             candidates.append(
                 {
@@ -85,12 +83,12 @@ class LeagueProcessor:
                     "League": self.league_name,
                     "Home": home_team,
                     "Away": away_team,
-                    "aOppPPG": away_ppi_df.tail(1)["OppPPG"].values[0],
-                    "hOppPPG": home_ppi_df.tail(1)["OppPPG"].values[0],
-                    "aPPG": away_ppi_df.tail(1)["PPG"].values[0],
-                    "hPPG": home_ppi_df.tail(1)["PPG"].values[0],
-                    "hPPI": home_ppi_latest,
-                    "aPPI": away_ppi_latest,
+                    "hOppPPG": home_opps_ppg,
+                    "aOppPPG": away_opps_ppg,
+                    "hPPG": home_ppg,
+                    "aPPG": away_ppg,
+                    "hPPI": latest_home_ppi,
+                    "aPPI": latest_away_ppi,
                     "PPI_Diff": ppi_diff,
                 }
             )
@@ -129,13 +127,13 @@ def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
             continue
 
         for df in ppi_df_list:
-            df[["OppPPG", "PPG", "PPI"]] = df[["OppPPG", "PPG", "PPI"]].shift(
-                periods=1, fill_value=0
-            )
+            df[["OppsPPG", "TeamPPG", "TeamPPI"]] = df[
+                ["OppsPPG", "TeamPPG", "TeamPPI"]
+            ].shift(periods=1, fill_value=0)
 
         ppi_df = pd.concat(ppi_df_list)
 
-        pivot_cols = ["OppPPG", "PPG", "PPI"]
+        pivot_cols = ["OppsPPG", "TeamPPG", "TeamPPI"]
         ppi_df_wide = ppi_df.pivot_table(
             index=[
                 "Wk",

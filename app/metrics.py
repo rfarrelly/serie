@@ -73,8 +73,16 @@ class TeamMetrics:
         return opposition[opposition["Home"] != self.team_name]
 
     @property
-    def latest_points_performance_index(self):
-        return round(self.points_performance_index().tail(1)["TeamPPI"].values[0], 3)
+    def latest_points_performance_index(self) -> np.float64:
+        return self.points_performance_index().tail(1)["TeamPPI"].values[0]
+
+    @property
+    def latest_points_per_game(self) -> np.float64:
+        return self.points_performance_index().tail(1)["TeamPPG"].values[0]
+
+    @property
+    def latest_opposition_points_per_game(self) -> np.float64:
+        return self.points_performance_index().tail(1)["OppsPPG"].values[0]
 
     @cached_property
     def home_points(self) -> pd.DataFrame:
@@ -210,5 +218,6 @@ class TeamMetrics:
         mean_weekly_opposition_ppg["TeamPPI"] = (
             mean_weekly_opposition_ppg["OppsPPG"]
             * mean_weekly_opposition_ppg["TeamPPG"]
-        )
+        ).round(3)
+
         return mean_weekly_opposition_ppg
