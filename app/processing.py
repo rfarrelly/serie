@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
