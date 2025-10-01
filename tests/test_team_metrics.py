@@ -26,5 +26,6 @@ def test_season_metrics_computes_metrics_tables(schedule_df: pd.DataFrame):
     #     season_metrics.opposition_home_away_weekly_mean_ppg()
     # )
     # points_performance_index = team_metrics.points_performance_index()
-    latest_points_performance_index = team_metrics.latest_points_performance_index
+    # latest_points_performance_index = team_metrics.latest_points_performance_index
+    metrics = team_metrics.team_home_metrics()
     breakpoint()

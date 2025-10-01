@@ -220,4 +220,62 @@ class TeamMetrics:
             * mean_weekly_opposition_ppg["TeamPPG"]
         ).round(3)
 
-        return mean_weekly_opposition_ppg
+        return mean_weekly_opposition_ppg.drop(week_cols, axis="columns")
+
+    def team_home_metrics(self):
+        metrics_table = self.points_performance_index()
+
+        home_metrics_table = (
+            metrics_table.merge(
+                self.home_played_opposition_teams,
+                left_on=["Wk", "Date", "Opposition"],
+                right_on=["Wk", "Date", "Away"],
+            )
+            .drop("Opposition", axis="columns")
+            .rename(
+                columns={"OppsPPG": "hOppsPPG", "TeamPPG": "hPPG", "TeamPPI": "hPPI"}
+            )
+        )
+
+        home_metrics_table["Home"] = self.team_name
+
+        return home_metrics_table[
+            [
+                "Wk",
+                "Date",
+                "Home",
+                "Away",
+                "hOppsPPG",
+                "hPPG",
+                "hPPI",
+            ]
+        ]
+
+    def team_away_metrics(self):
+        metrics_table = self.points_performance_index()
+
+        away_metrics_table = (
+            metrics_table.merge(
+                self.away_played_opposition_teams,
+                left_on=["Wk", "Date", "Opposition"],
+                right_on=["Wk", "Date", "Home"],
+            )
+            .drop("Opposition", axis="columns")
+            .rename(
+                columns={"OppsPPG": "aOppsPPG", "TeamPPG": "aPPG", "TeamPPI": "aPPI"}
+            )
+        )
+
+        away_metrics_table["Away"] = self.team_name
+
+        return away_metrics_table[
+            [
+                "Wk",
+                "Date",
+                "Home",
+                "Away",
+                "aOppsPPG",
+                "aPPG",
+                "aPPI",
+            ]
+        ]
