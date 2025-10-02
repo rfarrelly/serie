@@ -304,14 +304,32 @@ class ModelManager:
         """Generate all prediction types for a single match."""
         home_team, away_team = match["Home"], match["Away"]
 
-        # Get predictions for all methods
-        methods = ["poisson", "zip", "mov"]
-        predictions = {
-            method: model.predict_match(home_team, away_team, method=method)
-            for method in methods
-        }
+        # Get predictions for all methods (now includes 'ml' if available)
+        methods = list(model.predictors.keys())  # ['poisson', 'zip', 'mov', 'ml']
 
-        # Build base prediction dictionary
+        predictions = {}
+        for method in methods:
+            try:
+                # Pass PPI and odds to ML predictor via kwargs
+                predictions[method] = model.predict_match(
+                    home_team,
+                    away_team,
+                    method=method,
+                    hPPI=match.get("hPPI", 0),
+                    aPPI=match.get("aPPI", 0),
+                    PPIDiff=match.get("PPIDiff", 0),
+                    PSH=match.get("PSH", 2.0),
+                    PSD=match.get("PSD", 3.5),
+                    PSA=match.get("PSA", 4.0),
+                    B365H=match.get("B365H", 2.0),
+                    B365D=match.get("B365D", 3.5),
+                    B365A=match.get("B365A", 4.0),
+                )
+            except Exception as e:
+                print(f"Error with {method} predictor: {e}")
+                continue
+
+        # Build prediction dictionary
         pred_dict = {
             "Date": match["Date"],
             "League": match.get("League"),
@@ -320,16 +338,23 @@ class ModelManager:
         }
 
         # Add predictions for each method
-        method_names = ["Poisson", "ZIP", "MOV"]
-        for method, name in zip(methods, method_names):
-            pred = predictions[method]
-            pred_dict.update(
-                {
-                    f"{name}_Prob_H": pred.prob_home_win,
-                    f"{name}_Prob_D": pred.prob_draw,
-                    f"{name}_Prob_A": pred.prob_away_win,
-                }
-            )
+        method_mapping = {
+            "poisson": "Poisson",
+            "zip": "ZIP",
+            "mov": "MOV",
+            "ml": "ML",  # Add ML
+        }
+
+        for method, name in method_mapping.items():
+            if method in predictions:
+                pred = predictions[method]
+                pred_dict.update(
+                    {
+                        f"{name}_Prob_H": pred.prob_home_win,
+                        f"{name}_Prob_D": pred.prob_draw,
+                        f"{name}_Prob_A": pred.prob_away_win,
+                    }
+                )
 
         # Add backward compatibility fields (using ZIP as primary)
         zip_pred = predictions["zip"]

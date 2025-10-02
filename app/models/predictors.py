@@ -2,6 +2,7 @@
 Prediction strategy implementations.
 """
 
+import os
 from abc import ABC, abstractmethod
 from typing import Tuple
 
@@ -141,8 +142,23 @@ class PredictorFactory:
         config: ModelConfig, historical_data: pd.DataFrame, mov_model
     ) -> dict:
         """Create all available predictors."""
-        return {
+        predictors = {
             "poisson": PoissonPredictor(config),
             "zip": ZIPPredictor(config, historical_data),
             "mov": MOVPredictor(config, mov_model),
         }
+
+        # Add ML predictor if available
+        try:
+            import os
+
+            from .predictors_ml import MLPredictor
+
+            ml_model_path = "ml_models/ml_predictor.pkl"
+            if os.path.exists(ml_model_path):
+                predictors["ml"] = MLPredictor(config, model_path=ml_model_path)
+                print("  ✓ ML predictor loaded")
+        except (ImportError, FileNotFoundError):
+            pass  # ML predictor not available
+
+        return predictors

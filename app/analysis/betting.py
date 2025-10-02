@@ -78,7 +78,7 @@ class BettingCalculator:
 
     def _extract_model_probabilities(self, pred: pd.Series) -> Dict[str, List[float]]:
         """Extract model probabilities from prediction row."""
-        return {
+        prob_sets = {
             "poisson": [
                 pred["Poisson_Prob_H"],
                 pred["Poisson_Prob_D"],
@@ -87,6 +87,12 @@ class BettingCalculator:
             "zip": [pred["ZIP_Prob_H"], pred["ZIP_Prob_D"], pred["ZIP_Prob_A"]],
             "mov": [pred["MOV_Prob_H"], pred["MOV_Prob_D"], pred["MOV_Prob_A"]],
         }
+
+        # Add ML if available
+        if all(col in pred.index for col in ["ML_Prob_H", "ML_Prob_D", "ML_Prob_A"]):
+            prob_sets["ml"] = [pred["ML_Prob_H"], pred["ML_Prob_D"], pred["ML_Prob_A"]]
+
+        return prob_sets
 
     def _average_model_probabilities(
         self, prob_sets: Dict[str, List[float]]
