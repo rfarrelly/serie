@@ -52,7 +52,7 @@ class ZSDPoissonModel:
         self.convergence_info = {"success": True}
 
     def predict_match(
-        self, home_team: str, away_team: str, method: str = "zip"
+        self, home_team: str, away_team: str, method: str = "zip", **kwargs
     ) -> MatchPrediction:
         """Predict a single match outcome."""
         self._validate_teams(home_team, away_team)

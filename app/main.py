@@ -481,6 +481,12 @@ def main():
         elif mode == "predict":
             pipeline.run_zsd_predictions()
 
+        elif mode == "train_ml":
+            # Train ML predictor
+            from train_ml_predictor import main as train_ml
+
+            train_ml()
+
         else:
             print(f"Unknown mode: {mode}")
             print_pipeline_help()
