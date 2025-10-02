@@ -3,6 +3,7 @@ import time
 import pandas as pd
 from config import AppConfig, Leagues
 from curl_cffi import requests
+from utils.data_corrections import fix_scunthorpe_wealdestone_2025_2026
 from utils.datetime_helpers import format_date
 from utils.url_helpers import (
     fbduk_extra_url_builder,
@@ -95,6 +96,8 @@ class DataIngestion:
             lambda x: pd.Series(self._parse_score(x))
         )
         played_fixtures_df = played_fixtures_df.drop("Score", axis="columns")
+
+        played_fixtures_df = fix_scunthorpe_wealdestone_2025_2026(played_fixtures_df)
 
         self.write_files(played_fixtures_df, dir_path, league_name, season)
         self.write_files(
