@@ -9,6 +9,6 @@ def fix_scunthorpe_wealdestone_2025_2026(df):
         & (df["Season"] == "2025-2026")
     )
     df.loc[mask, "FTHG"] = 2
-    df.loc[mask, "FTAG"] = 0
+    df.loc[mask, "FTAG"] = 1
 
     return df
