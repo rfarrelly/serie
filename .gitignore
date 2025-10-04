@@ -23,3 +23,4 @@ temp.py
 betting_logs
 ml_models
 !team_name_dictionary.csv
+!tests/National-League_2025-2026.csv
