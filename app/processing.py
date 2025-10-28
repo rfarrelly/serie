@@ -97,11 +97,15 @@ class LeagueProcessor:
 
 def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
     print("Processing historical PPI")
+
+    exclude_leagues = [league.fbref_name for league in Leagues if league.is_extra]
+
     files = [
         str(file)
         for file in config.fbref_data_dir.rglob("*.csv")
         if file.is_file()
         if "unplayed" not in str(file)
+        if not any(exclude in str(file) for exclude in exclude_leagues)
     ]
 
     historical_metrics = []
