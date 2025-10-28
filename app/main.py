@@ -218,7 +218,8 @@ class BettingPipeline:
 
         print(f"{'=' * 60}\r\nGENERATING LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
 
-        ppi_all_leagues = []
+        ppi_main_leagues = []
+        ppi_extra_leagues = []
         failed_leagues = []
 
         for league in Leagues:
@@ -229,7 +230,10 @@ class BettingPipeline:
             try:
                 ppi = processor.get_points_performance_index()
                 if ppi:
-                    ppi_all_leagues.extend(ppi)
+                    if league.is_extra:
+                        ppi_extra_leagues.extend(ppi)
+                    else:
+                        ppi_main_leagues.extend(ppi)
                     print(f"  Generated {len(ppi)} PPI records for {league.name}")
                 else:
                     print(f"  No PPI data for {league.name}")
@@ -238,16 +242,35 @@ class BettingPipeline:
                 failed_leagues.append(league.name)
                 continue
 
-        if not ppi_all_leagues:
-            print("No PPI data generated")
-            return False
-
-        # Save PPI data
         from config import END_DATE, TODAY
 
         print(f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}")
 
-        ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
+        # Generate a file with PPI for both main and extra leagues
+        if ppi_extra_leagues:
+            print(
+                f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}"
+            )
+            ppi_latest_main_extra = pd.concat(
+                [
+                    pd.DataFrame(ppi_main_leagues),
+                    pd.DataFrame(ppi_extra_leagues),
+                ]
+            ).sort_values(by="PPI_Diff")
+
+            ppi_latest_main_extra.to_csv("latest_ppi_main_extra.csv", index=False)
+            print(
+                f"Saved {len(ppi_latest_main_extra)} PPI records to latest_ppi_main_extra.csv"
+            )
+        else:
+            print("No PPI data generated for extra leagues")
+
+        if not ppi_main_leagues:
+            print("No PPI data generated for main leagues")
+            return False
+
+        # Generate PPI file for main leagues only and merge odds
+        ppi_latest = pd.DataFrame(ppi_main_leagues).sort_values(by="PPI_Diff")
         ppi_latest.to_csv("latest_ppi.csv", index=False)
         print(f"Saved {len(ppi_latest)} PPI records to latest_ppi.csv")
 
