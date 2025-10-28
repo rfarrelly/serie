@@ -132,6 +132,14 @@ class Leagues(Enum):
         "is_extra": False,
     }
 
+    # extra leagues
+    POL = {
+        "fbref_id": 36,
+        "fbduk_id": "POL",
+        "fbref_name": "Ekstraklasa",
+        "is_extra": True,
+    }
+
     @property
     def fbref_id(self):
         return self.value["fbref_id"]

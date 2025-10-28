@@ -165,7 +165,7 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
-    def run_get_data(self, season: str) -> bool:
+    def run_get_data(self, season: str, league: str) -> bool:
         """Download data for all leagues for a specific season."""
         print(f"Downloading data for season: {season}")
 
@@ -177,7 +177,8 @@ class BettingPipeline:
         failed_leagues = []
         successful_leagues = []
 
-        for league in Leagues:
+        if league:
+            league = Leagues[league]
             processor = LeagueProcessor(league, config)
             try:
                 print(f"Processing {league.name}...")
@@ -187,7 +188,18 @@ class BettingPipeline:
             except Exception as e:
                 print(f"Error getting data for {league.name} {season}: {e}\r\n")
                 failed_leagues.append(league.name)
-                continue
+        else:
+            for league in Leagues:
+                processor = LeagueProcessor(league, config)
+                try:
+                    print(f"Processing {league.name}...")
+                    # processor.get_fbref_data()
+                    processor.get_fbduk_data()
+                    successful_leagues.append(league.name)
+                except Exception as e:
+                    print(f"Error getting data for {league.name} {season}: {e}\r\n")
+                    failed_leagues.append(league.name)
+                    continue
 
         # Summary
         print(f"\nData download summary:")
@@ -450,7 +462,8 @@ def main():
         elif mode == "get_data":
             if len(sys.argv) > 2:
                 season = sys.argv[2]
-                pipeline.run_get_data(season)
+                league = sys.argv[3]
+                pipeline.run_get_data(season, league)
             else:
                 print("Usage: uv run app/main.py get_data <season>")
 

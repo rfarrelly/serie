@@ -121,10 +121,15 @@ class DataIngestion:
             "B365CD",
             "B365CA",
         ]
+        extra_leagues_odds_columns = [
+            "PSCH",
+            "PSCD",
+            "PSCA",
+        ]
 
         if league.is_extra:
             url = fbduk_extra_url_builder(self.config.fbduk_base_url_extra, league)
-            columns = ["Date", "Season", "Home", "Away"] + odds_columns
+            columns = ["Date", "Season", "Home", "Away"] + extra_leagues_odds_columns
             season_extra_format = season.replace("-", "/")
         else:
             url = fbduk_main_url_builder(
@@ -139,12 +144,22 @@ class DataIngestion:
         )
 
         # Fill empty closing odds with pre-closing odds and visa-versa
-        data_df = self._fill_empty_odds(data_df)
+        if not league.is_extra:
+            data_df = self._fill_empty_odds(data_df)
 
         if "Season" in data_df.columns:
             data_df = data_df[data_df["Season"] == season_extra_format]
 
         data_df = format_date(data_df)
+
+        if league.is_extra:
+            data_df = data_df.rename(
+                columns={
+                    "PSCH": "PSH",
+                    "PSCD": "PSD",
+                    "PSCA": "PSA",
+                }
+            )
 
         self.write_files(data_df, dir_path, league_name, season)
 
