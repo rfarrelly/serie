@@ -132,11 +132,18 @@ class Leagues(Enum):
         "is_extra": False,
     }
 
-    # extra leagues
+    # # extra leagues
     POL = {
         "fbref_id": 36,
         "fbduk_id": "POL",
         "fbref_name": "Ekstraklasa",
+        "is_extra": True,
+    }
+
+    BRA = {
+        "fbref_id": 24,
+        "fbduk_id": "BRA",
+        "fbref_name": "Serie-A",
         "is_extra": True,
     }
 

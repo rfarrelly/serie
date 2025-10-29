@@ -10,21 +10,30 @@ class LeagueProcessor:
         self.league = league
         self.config = config
         self.league_name = league.fbref_name
-        self.fbref_dir = config.get_fbref_league_dir(self.league_name)
+        self.fbref_dir = config.get_fbref_league_dir(
+            self.league.fbduk_id + "_" + self.league_name
+            if self.league.is_extra
+            else self.league_name
+        )
         self.ingestion = DataIngestion(config)
 
     @property
     def played_matches_df(self):
+        filename = f"{self.league_name}_{self.config.current_season}.csv"
+        if self.league.is_extra:
+            filename = f"{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
         return pd.read_csv(
-            self.fbref_dir / f"{self.league_name}_{self.config.current_season}.csv",
+            self.fbref_dir / filename,
             dtype={"Wk": int},
         )
 
     @property
     def unplayed_matches_df(self):
+        filename = f"{self.league_name}_{self.config.current_season}.csv"
+        if self.league.is_extra:
+            filename = f"{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
         return pd.read_csv(
-            self.fbref_dir
-            / f"unplayed_{self.league_name}_{self.config.current_season}.csv",
+            self.fbref_dir / f"unplayed_{filename}",
             dtype={"Wk": int},
         )
 
