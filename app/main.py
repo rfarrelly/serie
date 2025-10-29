@@ -165,7 +165,7 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
-    def run_get_data(self, season: str, league: str) -> bool:
+    def run_get_data(self, season: str, league: str | None = None) -> bool:
         """Download data for all leagues for a specific season."""
         print(f"Downloading data for season: {season}")
 
@@ -193,7 +193,7 @@ class BettingPipeline:
                 processor = LeagueProcessor(league, config)
                 try:
                     print(f"Processing {league.name}...")
-                    # processor.get_fbref_data()
+                    processor.get_fbref_data()
                     processor.get_fbduk_data()
                     successful_leagues.append(league.name)
                 except Exception as e:
@@ -482,13 +482,18 @@ def main():
         if mode == "status":
             pipeline.pipeline_config.print_status_report()
 
+        # Mostly for testing
         elif mode == "get_data":
             if len(sys.argv) > 2:
                 season = sys.argv[2]
                 league = sys.argv[3]
                 pipeline.run_get_data(season, league)
             else:
-                print("Usage: uv run app/main.py get_data <season>")
+                print("Usage: uv run app/main.py get_data <season> <league>")
+
+        elif mode == "get_all_data":
+            season = sys.argv[2]
+            pipeline.run_get_data(season)
 
         elif mode == "latest_ppi":
             pipeline.run_latest_ppi()
