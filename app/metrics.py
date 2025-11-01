@@ -7,35 +7,8 @@ import pandas as pd
 
 
 @dataclass
-class TeamMetrics:
-    """
-    A class for calculating team performance metrics from match data.
-
-    Args:
-        team_name: Name of the team to analyze
-        matches: Either a CSV file path or a pandas DataFrame containing match data
-        team_matches: DataFrame of matches for this specific team (auto-populated)
-    """
-
-    team_name: str
-    matches: Union[str, pd.DataFrame]
-    team_matches: pd.DataFrame = None
-
-    def __post_init__(self):
-        """Initialize the TeamMetrics object and validate input data."""
-        if isinstance(self.matches, str):
-            self.matches = pd.read_csv(self.matches)
-
-        # Input validation
-        required_cols = ["Home", "Away", "FTHG", "FTAG", "Wk", "Date"]
-        missing_cols = set(required_cols) - set(self.matches.columns)
-        if missing_cols:
-            raise ValueError(f"Missing required columns: {missing_cols}")
-
-        self.team_matches = self.matches[
-            (self.matches["Home"] == self.team_name)
-            | (self.matches["Away"] == self.team_name)
-        ].copy()
+class LeagueMetrics:
+    matches: pd.DataFrame
 
     def _calculate_points(
         self, home_goals: pd.Series, away_goals: pd.Series, perspective: str
@@ -59,6 +32,90 @@ class TeamMetrics:
             return np.where(
                 away_goals > home_goals, 3, np.where(home_goals == away_goals, 1, 0)
             )
+
+    @cached_property
+    def home_points(self) -> pd.DataFrame:
+        """Calculate home points for all teams across all weeks."""
+        matches_copy = self.matches.copy()
+        matches_copy["HP"] = self._calculate_points(
+            matches_copy["FTHG"], matches_copy["FTAG"], "home"
+        )
+        return matches_copy.pivot(index="Home", columns="Wk", values="HP")
+
+    @cached_property
+    def away_points(self) -> pd.DataFrame:
+        """Calculate away points for all teams across all weeks."""
+        matches_copy = self.matches.copy()
+        matches_copy["AP"] = self._calculate_points(
+            matches_copy["FTHG"], matches_copy["FTAG"], "away"
+        )
+        return matches_copy.pivot(index="Away", columns="Wk", values="AP")
+
+    @cached_property
+    def league_average_ppg(self) -> np.float64:
+        combined_points = (
+            self.home_points.combine_first(self.away_points).T.expanding().mean().T
+        )
+
+        return combined_points[combined_points.columns[-1:]].mean().values[0]
+
+
+@dataclass
+class TeamMetrics:
+    """
+    A class for calculating team performance metrics from match data.
+
+    Args:
+        team_name: Name of the team to analyze
+        matches: Either a CSV file path or a pandas DataFrame containing match data
+        team_matches: DataFrame of matches for this specific team (auto-populated)
+    """
+
+    team_name: str
+    matches: Union[str, pd.DataFrame]
+    league_metrics: LeagueMetrics
+    team_matches: pd.DataFrame = None
+
+    def __post_init__(self):
+        """Initialize the TeamMetrics object and validate input data."""
+        if isinstance(self.matches, str):
+            self.matches = pd.read_csv(self.matches)
+
+        # Input validation
+        required_cols = ["Home", "Away", "FTHG", "FTAG", "Wk", "Date"]
+        missing_cols = set(required_cols) - set(self.matches.columns)
+        if missing_cols:
+            raise ValueError(f"Missing required columns: {missing_cols}")
+
+        self.league_metrics = LeagueMetrics(matches=self.matches)
+
+        self.team_matches = self.matches[
+            (self.matches["Home"] == self.team_name)
+            | (self.matches["Away"] == self.team_name)
+        ].copy()
+
+    # def _calculate_points(
+    #     self, home_goals: pd.Series, away_goals: pd.Series, perspective: str
+    # ) -> pd.Series:
+    #     """
+    #     Calculate points from home/away perspective using vectorized operations.
+
+    #     Args:
+    #         home_goals: Series of home team goals
+    #         away_goals: Series of away team goals
+    #         perspective: Either "home" or "away" to determine point calculation
+
+    #     Returns:
+    #         Series of points (3 for win, 1 for draw, 0 for loss)
+    #     """
+    #     if perspective == "home":
+    #         return np.where(
+    #             home_goals > away_goals, 3, np.where(home_goals == away_goals, 1, 0)
+    #         )
+    #     else:  # away
+    #         return np.where(
+    #             away_goals > home_goals, 3, np.where(home_goals == away_goals, 1, 0)
+    #         )
 
     @property
     def home_played_opposition_teams(self) -> pd.DataFrame:
@@ -84,28 +141,39 @@ class TeamMetrics:
     def latest_opposition_points_per_game(self) -> np.float64:
         return self.points_performance_index().tail(1)["OppsPPG"].values[0]
 
-    @cached_property
-    def home_points(self) -> pd.DataFrame:
-        """Calculate home points for all teams across all weeks."""
-        matches_copy = self.matches.copy()
-        matches_copy["HP"] = self._calculate_points(
-            matches_copy["FTHG"], matches_copy["FTAG"], "home"
+    @property
+    def latest_points_performance_index_normalised(self):
+        return (
+            self.latest_points_performance_index
+            / self.league_metrics.league_average_ppg**2
         )
-        return matches_copy.pivot(index="Home", columns="Wk", values="HP")
 
-    @cached_property
-    def away_points(self) -> pd.DataFrame:
-        """Calculate away points for all teams across all weeks."""
-        matches_copy = self.matches.copy()
-        matches_copy["AP"] = self._calculate_points(
-            matches_copy["FTHG"], matches_copy["FTAG"], "away"
-        )
-        return matches_copy.pivot(index="Away", columns="Wk", values="AP")
+    # @cached_property
+    # def home_points(self) -> pd.DataFrame:
+    #     """Calculate home points for all teams across all weeks."""
+    #     matches_copy = self.matches.copy()
+    #     matches_copy["HP"] = self._calculate_points(
+    #         matches_copy["FTHG"], matches_copy["FTAG"], "home"
+    #     )
+    #     return matches_copy.pivot(index="Home", columns="Wk", values="HP")
+
+    # @cached_property
+    # def away_points(self) -> pd.DataFrame:
+    #     """Calculate away points for all teams across all weeks."""
+    #     matches_copy = self.matches.copy()
+    #     matches_copy["AP"] = self._calculate_points(
+    #         matches_copy["FTHG"], matches_copy["FTAG"], "away"
+    #     )
+    #     return matches_copy.pivot(index="Away", columns="Wk", values="AP")
 
     def team_total_weekly_ppg(self) -> pd.DataFrame:
         """Calculate team's cumulative points per game by week."""
-        home_points = self.home_points[self.home_points.index == self.team_name]
-        away_points = self.away_points[self.away_points.index == self.team_name]
+        home_points = self.league_metrics.home_points[
+            self.league_metrics.home_points.index == self.team_name
+        ]
+        away_points = self.league_metrics.away_points[
+            self.league_metrics.away_points.index == self.team_name
+        ]
 
         combined = pd.concat([home_points, away_points], axis="columns").dropna(
             how="all", axis="columns"
@@ -125,8 +193,10 @@ class TeamMetrics:
     def opposition_away_weekly_ppg(self) -> pd.DataFrame:
         """Calculate opposition away PPG for teams that played at this team's home."""
         result = (
-            self.away_points[
-                self.away_points.index.isin(self.home_played_opposition_teams["Away"])
+            self.league_metrics.away_points[
+                self.league_metrics.away_points.index.isin(
+                    self.home_played_opposition_teams["Away"]
+                )
             ]
             .T.expanding()
             .mean()
@@ -140,8 +210,10 @@ class TeamMetrics:
     def opposition_home_weekly_ppg(self) -> pd.DataFrame:
         """Calculate opposition home PPG for teams this team played away against."""
         result = (
-            self.home_points[
-                self.home_points.index.isin(self.away_played_opposition_teams["Home"])
+            self.league_metrics.home_points[
+                self.league_metrics.home_points.index.isin(
+                    self.away_played_opposition_teams["Home"]
+                )
             ]
             .T.expanding()
             .mean()

@@ -256,7 +256,7 @@ class BettingPipeline:
                     pd.DataFrame(ppi_main_leagues),
                     pd.DataFrame(ppi_extra_leagues),
                 ]
-            ).sort_values(by="PPI_Diff")
+            ).sort_values(by="PPINorm_Diff")
 
             ppi_latest_main_extra.to_csv("latest_ppi_main_extra.csv", index=False)
             print(
@@ -270,7 +270,7 @@ class BettingPipeline:
             return False
 
         # Generate PPI file for main leagues only and merge odds
-        ppi_latest = pd.DataFrame(ppi_main_leagues).sort_values(by="PPI_Diff")
+        ppi_latest = pd.DataFrame(ppi_main_leagues).sort_values(by="PPINorm_Diff")
         ppi_latest.to_csv("latest_ppi.csv", index=False)
         print(f"Saved {len(ppi_latest)} PPI records to latest_ppi.csv")
 

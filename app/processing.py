@@ -1,7 +1,7 @@
 import pandas as pd
 from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
-from metrics import TeamMetrics
+from metrics import LeagueMetrics, TeamMetrics
 from utils.datetime_helpers import filter_date_range
 
 
@@ -64,14 +64,31 @@ class LeagueProcessor:
                 fixture.Away,
             )
 
+            league_metrics = LeagueMetrics(matches=self.played_matches_df)
+
             try:
-                home_team_metrics = TeamMetrics(home_team, self.played_matches_df)
-                away_team_metrics = TeamMetrics(away_team, self.played_matches_df)
+                home_team_metrics = TeamMetrics(
+                    home_team, self.played_matches_df, league_metrics
+                )
+                away_team_metrics = TeamMetrics(
+                    away_team, self.played_matches_df, league_metrics
+                )
 
                 latest_home_ppi = home_team_metrics.latest_points_performance_index
                 latest_away_ppi = away_team_metrics.latest_points_performance_index
 
                 ppi_diff = round(abs(latest_home_ppi - latest_away_ppi), 2)
+
+                latest_ppi_home_norm = (
+                    home_team_metrics.latest_points_performance_index_normalised
+                )
+                latest_ppi_away_norm = (
+                    away_team_metrics.latest_points_performance_index_normalised
+                )
+
+                ppi_norm_diff = round(
+                    abs(latest_ppi_home_norm - latest_ppi_away_norm), 2
+                )
 
                 home_ppg = home_team_metrics.latest_points_per_game
                 away_ppg = away_team_metrics.latest_points_per_game
@@ -97,6 +114,9 @@ class LeagueProcessor:
                     "hPPI": latest_home_ppi,
                     "aPPI": latest_away_ppi,
                     "PPI_Diff": ppi_diff,
+                    "hPPINorm": latest_ppi_home_norm,
+                    "aPPINorm": latest_ppi_away_norm,
+                    "PPINorm_Diff": ppi_norm_diff,
                 }
             )
 
