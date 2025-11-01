@@ -132,6 +132,120 @@ class Leagues(Enum):
         "is_extra": False,
     }
 
+    # # extra leagues
+    ARG = {
+        "fbref_id": 21,
+        "fbduk_id": "ARG",
+        "fbref_name": "Liga-Profesional-Argentina",
+        "is_extra": True,
+    }
+
+    AUT = {
+        "fbref_id": 56,
+        "fbduk_id": "AUT",
+        "fbref_name": "Austrian-Bundesliga",
+        "is_extra": True,
+    }
+
+    BRA = {
+        "fbref_id": 24,
+        "fbduk_id": "BRA",
+        "fbref_name": "Serie-A",
+        "is_extra": True,
+    }
+
+    CHN = {
+        "fbref_id": 62,
+        "fbduk_id": "CHN",
+        "fbref_name": "Chinese-Super-League",
+        "is_extra": True,
+    }
+
+    DNK = {
+        "fbref_id": 50,
+        "fbduk_id": "DNK",
+        "fbref_name": "Danish-Superliga",
+        "is_extra": True,
+    }
+
+    FIN = {
+        "fbref_id": 43,
+        "fbduk_id": "FIN",
+        "fbref_name": "Veikkausliiga",
+        "is_extra": True,
+    }
+
+    IRL = {
+        "fbref_id": 80,
+        "fbduk_id": "IRL",
+        "fbref_name": "League-of-Ireland-Premier-Division",
+        "is_extra": True,
+    }
+
+    JPN = {
+        "fbref_id": 25,
+        "fbduk_id": "JPN",
+        "fbref_name": "J1-League",
+        "is_extra": True,
+    }
+
+    MEX = {
+        "fbref_id": 31,
+        "fbduk_id": "MEX",
+        "fbref_name": "Liga-MX",
+        "is_extra": True,
+    }
+
+    NOR = {
+        "fbref_id": 28,
+        "fbduk_id": "NOR",
+        "fbref_name": "Eliteserien",
+        "is_extra": True,
+    }
+
+    POL = {
+        "fbref_id": 36,
+        "fbduk_id": "POL",
+        "fbref_name": "Ekstraklasa",
+        "is_extra": True,
+    }
+
+    ROU = {
+        "fbref_id": 47,
+        "fbduk_id": "ROU",
+        "fbref_name": "Liga-I",
+        "is_extra": True,
+    }
+
+    RUS = {
+        "fbref_id": 30,
+        "fbduk_id": "RUS",
+        "fbref_name": "Russian-Premier-League",
+        "is_extra": True,
+    }
+
+    SWE = {
+        "fbref_id": 29,
+        "fbduk_id": "SWE",
+        "fbref_name": "Allsvenskan",
+        "is_extra": True,
+    }
+
+    SWZ = {
+        "fbref_id": 57,
+        "fbduk_id": "SWZ",
+        "fbref_name": "Swiss-Super-League",
+        "is_extra": True,
+    }
+
+    # NOTE: No week column WTF???
+    # USA = {
+    #     "fbref_id": 22,
+    #     "fbduk_id": "USA",
+    #     "fbref_name": "Major-League-Soccer",
+    #     "is_extra": True,
+    # }
+
     @property
     def fbref_id(self):
         return self.value["fbref_id"]

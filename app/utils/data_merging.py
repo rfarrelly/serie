@@ -4,9 +4,8 @@ Data merging utilities for combining different data sources.
 Moved from main.py for better organization.
 """
 
-import numpy as np
 import pandas as pd
-from config import DEFAULT_CONFIG
+from config import DEFAULT_CONFIG, Leagues
 from utils.datetime_helpers import format_date
 
 
@@ -36,16 +35,22 @@ def map_team_names(df, mapping_dict, home_col="Home", away_col="Away"):
 
 def load_fbduk_odds_data():
     """Load and combine all fbduk odds data files."""
-    odds_files = list(DEFAULT_CONFIG.fbduk_data_dir.rglob("*.csv"))
 
+    exclude_leagues = [league.fbref_name for league in Leagues if league.is_extra]
+
+    # odds_files = list(DEFAULT_CONFIG.fbduk_data_dir.rglob("*.csv"))
+    odds_files = [
+        str(file)
+        for file in DEFAULT_CONFIG.fbduk_data_dir.rglob("*.csv")
+        if file.is_file()
+        if not any(exclude in str(file) for exclude in exclude_leagues)
+    ]
     if not odds_files:
         raise FileNotFoundError(
             f"No CSV files found in {DEFAULT_CONFIG.fbduk_data_dir}"
         )
 
-    fbduk_odds_data = pd.concat(
-        [pd.read_csv(str(file)) for file in odds_files if file.is_file()]
-    )
+    fbduk_odds_data = pd.concat([pd.read_csv(file) for file in odds_files])
 
     return fbduk_odds_data
 

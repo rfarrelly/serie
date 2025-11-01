@@ -33,7 +33,12 @@ class DataIngestion:
     def get_fbref_data(self, league: Leagues, season: str):
         league_name = league.fbref_name
         url = fbref_url_builder(self.config.fbref_base_url, league, season)
-        dir_path = self.config.get_fbref_league_dir(league_name)
+        if league.is_extra:
+            dir_path = self.config.get_fbref_league_dir(
+                league.fbduk_id + "_" + league_name
+            )
+        else:
+            dir_path = self.config.get_fbref_league_dir(league_name)
 
         try:
             print(f"Getting data for url: {url}")
@@ -99,13 +104,32 @@ class DataIngestion:
 
         played_fixtures_df = fix_scunthorpe_wealdestone_2025_2026(played_fixtures_df)
 
-        self.write_files(played_fixtures_df, dir_path, league_name, season)
-        self.write_files(
-            unplayed_fixtures_df, dir_path, league_name, season, prefix="unplayed_"
-        )
+        if league.is_extra:
+            self.write_files(
+                played_fixtures_df,
+                dir_path,
+                league_name,
+                season,
+                prefix=league.fbduk_id + "_",
+            )
+            self.write_files(
+                unplayed_fixtures_df,
+                dir_path,
+                league_name,
+                season,
+                prefix="unplayed_" + league.fbduk_id + "_",
+            )
+        else:
+            self.write_files(played_fixtures_df, dir_path, league_name, season)
+            self.write_files(
+                unplayed_fixtures_df, dir_path, league_name, season, prefix="unplayed_"
+            )
         time.sleep(3)
 
     def get_fbduk_data(self, league: Leagues, season: str):
+        if league.is_extra:
+            return None
+
         league_name = league.fbref_name
         odds_columns = [
             "PSH",
@@ -122,15 +146,8 @@ class DataIngestion:
             "B365CA",
         ]
 
-        if league.is_extra:
-            url = fbduk_extra_url_builder(self.config.fbduk_base_url_extra, league)
-            columns = ["Date", "Season", "Home", "Away"] + odds_columns
-            season_extra_format = season.replace("-", "/")
-        else:
-            url = fbduk_main_url_builder(
-                self.config.fbduk_base_url_main, league, season
-            )
-            columns = ["Date", "HomeTeam", "AwayTeam"] + odds_columns
+        url = fbduk_main_url_builder(self.config.fbduk_base_url_main, league, season)
+        columns = ["Date", "HomeTeam", "AwayTeam"] + odds_columns
 
         dir_path = self.config.get_fbduk_league_dir(league_name)
 
@@ -138,11 +155,7 @@ class DataIngestion:
             columns={"HomeTeam": "Home", "AwayTeam": "Away"}
         )
 
-        # Fill empty closing odds with pre-closing odds and visa-versa
         data_df = self._fill_empty_odds(data_df)
-
-        if "Season" in data_df.columns:
-            data_df = data_df[data_df["Season"] == season_extra_format]
 
         data_df = format_date(data_df)
 

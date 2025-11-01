@@ -165,7 +165,7 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
-    def run_get_data(self, season: str) -> bool:
+    def run_get_data(self, season: str, league: str | None = None) -> bool:
         """Download data for all leagues for a specific season."""
         print(f"Downloading data for season: {season}")
 
@@ -177,7 +177,8 @@ class BettingPipeline:
         failed_leagues = []
         successful_leagues = []
 
-        for league in Leagues:
+        if league:
+            league = Leagues[league]
             processor = LeagueProcessor(league, config)
             try:
                 print(f"Processing {league.name}...")
@@ -187,7 +188,18 @@ class BettingPipeline:
             except Exception as e:
                 print(f"Error getting data for {league.name} {season}: {e}\r\n")
                 failed_leagues.append(league.name)
-                continue
+        else:
+            for league in Leagues:
+                processor = LeagueProcessor(league, config)
+                try:
+                    print(f"Processing {league.name}...")
+                    processor.get_fbref_data()
+                    processor.get_fbduk_data()
+                    successful_leagues.append(league.name)
+                except Exception as e:
+                    print(f"Error getting data for {league.name} {season}: {e}\r\n")
+                    failed_leagues.append(league.name)
+                    continue
 
         # Summary
         print(f"\nData download summary:")
@@ -206,7 +218,8 @@ class BettingPipeline:
 
         print(f"{'=' * 60}\r\nGENERATING LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
 
-        ppi_all_leagues = []
+        ppi_main_leagues = []
+        ppi_extra_leagues = []
         failed_leagues = []
 
         for league in Leagues:
@@ -217,7 +230,10 @@ class BettingPipeline:
             try:
                 ppi = processor.get_points_performance_index()
                 if ppi:
-                    ppi_all_leagues.extend(ppi)
+                    if league.is_extra:
+                        ppi_extra_leagues.extend(ppi)
+                    else:
+                        ppi_main_leagues.extend(ppi)
                     print(f"  Generated {len(ppi)} PPI records for {league.name}")
                 else:
                     print(f"  No PPI data for {league.name}")
@@ -226,16 +242,35 @@ class BettingPipeline:
                 failed_leagues.append(league.name)
                 continue
 
-        if not ppi_all_leagues:
-            print("No PPI data generated")
-            return False
-
-        # Save PPI data
         from config import END_DATE, TODAY
 
         print(f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}")
 
-        ppi_latest = pd.DataFrame(ppi_all_leagues).sort_values(by="PPI_Diff")
+        # Generate a file with PPI for both main and extra leagues
+        if ppi_extra_leagues:
+            print(
+                f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}"
+            )
+            ppi_latest_main_extra = pd.concat(
+                [
+                    pd.DataFrame(ppi_main_leagues),
+                    pd.DataFrame(ppi_extra_leagues),
+                ]
+            ).sort_values(by="PPI_Diff")
+
+            ppi_latest_main_extra.to_csv("latest_ppi_main_extra.csv", index=False)
+            print(
+                f"Saved {len(ppi_latest_main_extra)} PPI records to latest_ppi_main_extra.csv"
+            )
+        else:
+            print("No PPI data generated for extra leagues")
+
+        if not ppi_main_leagues:
+            print("No PPI data generated for main leagues")
+            return False
+
+        # Generate PPI file for main leagues only and merge odds
+        ppi_latest = pd.DataFrame(ppi_main_leagues).sort_values(by="PPI_Diff")
         ppi_latest.to_csv("latest_ppi.csv", index=False)
         print(f"Saved {len(ppi_latest)} PPI records to latest_ppi.csv")
 
@@ -447,12 +482,18 @@ def main():
         if mode == "status":
             pipeline.pipeline_config.print_status_report()
 
+        # Mostly for testing
         elif mode == "get_data":
             if len(sys.argv) > 2:
                 season = sys.argv[2]
-                pipeline.run_get_data(season)
+                league = sys.argv[3]
+                pipeline.run_get_data(season, league)
             else:
-                print("Usage: uv run app/main.py get_data <season>")
+                print("Usage: uv run app/main.py get_data <season> <league>")
+
+        elif mode == "get_all_data":
+            season = sys.argv[2]
+            pipeline.run_get_data(season)
 
         elif mode == "latest_ppi":
             pipeline.run_latest_ppi()
