@@ -5,13 +5,32 @@ import pandas as pd
 from curl_cffi import requests
 from utils.datetime_helpers import filter_date_range
 
-leagues = [
+main_leagues = [
     "england",
     "england2",
     "england3",
     "england4",
     "england5",
+    "belgium",
+    "germany",
+    "germany2",
+    "spain",
+    "spain2",
+    "france",
+    "france2",
+    "greece",
+    "netherlands",
+    "italy",
+    "italy2",
+    "portugal",
+    "scotland",
+    "scotland2",
+    "scotland3",
+    "scotland4",
+    "turkey",
 ]
+
+extra_leagues = []
 
 
 TODAY = datetime.now().date()
@@ -35,6 +54,7 @@ def get_ppi_tables(league):
         },
         impersonate="safari_ios",
     )
+
     ppi_table = (
         pd.read_html(res.content)[11]
         .drop(
@@ -84,8 +104,13 @@ def get_fixtures(league):
         },
         impersonate="safari_ios",
     )
+
+    table_index = 10
+    if league in ["greece", "scotland", "scotland3", "scotland4"]:
+        table_index = 9
+
     df = (
-        pd.read_html(res.content)[10]
+        pd.read_html(res.content)[table_index]
         .dropna(how="all")
         .iloc[1:]
         .rename(columns={0: "Date", 1: "Home", 2: "Time", 3: "Away"})[
@@ -140,7 +165,7 @@ def merge_metrics(fixtures, metrics):
     return combined.reset_index(drop=True).sort_values("PPI_DIFF_NORM")
 
 
-fixtures = pd.concat([get_fixtures(league) for league in leagues])
-ppi_tables = pd.concat([get_ppi_tables(league) for league in leagues])
+main_fixtures = pd.concat([get_fixtures(league) for league in main_leagues])
+main_ppi_tables = pd.concat([get_ppi_tables(league) for league in main_leagues])
 
-merge_metrics(fixtures, ppi_tables).to_csv("PPI_LATEST.csv", index=False)
+merge_metrics(main_fixtures, main_ppi_tables).to_csv("PPI_LATEST.csv", index=False)
