@@ -20,6 +20,7 @@ END_DATE = TODAY + timedelta(days=TIME_DELTA)
 
 
 def get_ppi_tables(league):
+    print(f"Getting PPI for {league}")
     url = f"https://www.soccerstats.com/table.asp?league={league}&tid=rp"
 
     res = requests.get(
@@ -50,19 +51,26 @@ def get_ppi_tables(league):
         )
     )
 
+    ppi_table = ppi_table.head(len(ppi_table) - 1)
+
     ppi_table["OppsPPG"] = (
         ppi_table["OppsPPG"].str.extract(r"^\s*([0-9]+(?:\.[0-9]+)?)").astype(float)
     )
 
+    ppi_table["TeamPPG"] = ppi_table["TeamPPG"].astype(float)
+    ppi_table["PPI"] = ppi_table["PPI"].astype(float)
+
+    league_average_ppg = ppi_table["TeamPPG"].mean()
+
+    ppi_table["PPINorm"] = round(ppi_table["PPI"] / league_average_ppg**2, 2)
+
     time.sleep(5)
 
-    return ppi_table.head(len(ppi_table) - 1)
-
-
-# .to_csv(f"{path}/ppi.csv", index=False)
+    return ppi_table
 
 
 def get_fixtures(league):
+    print(f"Getting fixtures for {league}")
     url = f"https://www.soccerstats.com/results.asp?league={league}"
     res = requests.get(
         url,
@@ -89,7 +97,7 @@ def get_fixtures(league):
 
     current_year = datetime.now().year
     df["Date"] = pd.to_datetime(df["Date"] + f" {current_year}", format="%a %d %b %Y")
-
+    df["League"] = league
     time.sleep(5)
 
     return filter_date_range(df, TODAY, END_DATE)
@@ -98,13 +106,38 @@ def get_fixtures(league):
 def merge_metrics(fixtures, metrics):
     combined = fixtures.merge(metrics, left_on="Home", right_on="Team")
     combined = combined.merge(metrics, left_on="Away", right_on="Team").rename(
-        columns={"PPI_x": "hPPI", "PPI_y": "aPPI", "GP_x": "hGP", "GP_y": "aGP"}
+        columns={
+            "PPI_x": "hPPI",
+            "PPI_y": "aPPI",
+            "GP_x": "hGP",
+            "GP_y": "aGP",
+            "PPI_x": "hPPI",
+            "PPI_y": "aPPI",
+            "PPINorm_x": "hPPINorm",
+            "PPINorm_y": "aPPINorm",
+        }
     )
-    combined = combined[["Date", "Time", "Home", "Away", "hGP", "aGP", "hPPI", "aPPI"]]
+    cols = [
+        "League",
+        "Date",
+        "Time",
+        "Home",
+        "Away",
+        "hGP",
+        "aGP",
+        "hPPI",
+        "aPPI",
+        "hPPINorm",
+        "aPPINorm",
+    ]
+    combined = combined[cols]
     combined["hPPI"] = combined["hPPI"].astype(float)
     combined["aPPI"] = combined["aPPI"].astype(float)
     combined["PPI_DIFF"] = round(abs(combined["hPPI"] - combined["aPPI"]), 2)
-    return combined.reset_index(drop=True).sort_values("PPI_DIFF")
+    combined["PPI_DIFF_NORM"] = round(
+        abs(combined["hPPINorm"] - combined["aPPINorm"]), 2
+    )
+    return combined.reset_index(drop=True).sort_values("PPI_DIFF_NORM")
 
 
 fixtures = pd.concat([get_fixtures(league) for league in leagues])
