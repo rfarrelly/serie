@@ -1,5 +1,5 @@
+import time
 from datetime import datetime, timedelta
-from pathlib import Path
 
 import pandas as pd
 from curl_cffi import requests
@@ -13,7 +13,7 @@ leagues = [
     "england5",
 ]
 
-DATA_DIRECTORY = Path("DATA/SOCCERSTATS")
+
 TODAY = datetime.now().date()
 TIME_DELTA = 3
 END_DATE = TODAY + timedelta(days=TIME_DELTA)
@@ -54,10 +54,12 @@ def get_ppi_tables(league):
         ppi_table["OppsPPG"].str.extract(r"^\s*([0-9]+(?:\.[0-9]+)?)").astype(float)
     )
 
-    path = DATA_DIRECTORY / league
-    path.mkdir(parents=True, exist_ok=True)
+    time.sleep(5)
 
-    ppi_table.head(len(ppi_table) - 1).to_csv(f"{path}/ppi.csv", index=False)
+    return ppi_table.head(len(ppi_table) - 1)
+
+
+# .to_csv(f"{path}/ppi.csv", index=False)
 
 
 def get_fixtures(league):
@@ -88,23 +90,24 @@ def get_fixtures(league):
     current_year = datetime.now().year
     df["Date"] = pd.to_datetime(df["Date"] + f" {current_year}", format="%a %d %b %Y")
 
-    df = filter_date_range(df, TODAY, END_DATE)
-    df.to_csv("fixtures.csv", index=False)
+    time.sleep(5)
+
+    return filter_date_range(df, TODAY, END_DATE)
 
 
-def merge_metrics(league):
-    fixtures = pd.read_csv("fixtures.csv")
-    ppi_table = pd.read_csv(f"{DATA_DIRECTORY}/{league}/ppi.csv")
-    combined = fixtures.merge(ppi_table, left_on="Home", right_on="Team")
-    combined = combined.merge(ppi_table, left_on="Away", right_on="Team").rename(
-        columns={"PPI_x": "hPPI", "PPI_y": "aPPI"}
+def merge_metrics(fixtures, metrics):
+    combined = fixtures.merge(metrics, left_on="Home", right_on="Team")
+    combined = combined.merge(metrics, left_on="Away", right_on="Team").rename(
+        columns={"PPI_x": "hPPI", "PPI_y": "aPPI", "GP_x": "hGP", "GP_y": "aGP"}
     )
-    combined = combined[["Date", "Time", "Home", "Away", "hPPI", "aPPI"]]
-
-    combined["PPI_DIFF"] = abs(combined["hPPI"] - combined["aPPI"])
+    combined = combined[["Date", "Time", "Home", "Away", "hGP", "aGP", "hPPI", "aPPI"]]
+    combined["hPPI"] = combined["hPPI"].astype(float)
+    combined["aPPI"] = combined["aPPI"].astype(float)
+    combined["PPI_DIFF"] = round(abs(combined["hPPI"] - combined["aPPI"]), 2)
     return combined.reset_index(drop=True).sort_values("PPI_DIFF")
 
 
-# get_fixtures("england2")
-# get_ppi_tables("england2")
-# merge_metrics("england2")
+fixtures = pd.concat([get_fixtures(league) for league in leagues])
+ppi_tables = pd.concat([get_ppi_tables(league) for league in leagues])
+
+merge_metrics(fixtures, ppi_tables).to_csv("PPI_LATEST.csv", index=False)
