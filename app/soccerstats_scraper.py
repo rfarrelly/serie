@@ -1,3 +1,4 @@
+import random
 import time
 from datetime import datetime, timedelta
 
@@ -20,9 +21,11 @@ main_leagues = [
     "france2",
     "greece",
     "netherlands",
+    "netherlands2",
     "italy",
     "italy2",
     "portugal",
+    "portugal2",
     "scotland",
     "scotland2",
     "scotland3",
@@ -30,8 +33,36 @@ main_leagues = [
     "turkey",
 ]
 
-extra_leagues = []
+extra_leagues = [
+    "argentina",
+    "austria",
+    "australia",
+    "brazil",
+    "switzerland",
+    "czechrepublic",
+    "denmark",
+    "finland",
+    "southkorea",
+    "japan",
+    "norway",
+    "poland",
+    "russia",
+    "sweden",
+    "ukraine",
+]
 
+ALT_INDEX_LEAGUES = [
+    "greece",
+    "scotland",
+    "scotland3",
+    "scotland4",
+    "switzerland",
+    "czechrepublic",
+    "denmark",
+    "finland",
+    "poland",
+    "ukraine",
+]
 
 TODAY = datetime.now().date()
 TIME_DELTA = 3
@@ -84,7 +115,9 @@ def get_ppi_tables(league):
 
     ppi_table["PPINorm"] = round(ppi_table["PPI"] / league_average_ppg**2, 2)
 
-    time.sleep(5)
+    delay = random.randint(5, 10)
+    print(f"Waiting {delay} seconds")
+    time.sleep(delay)
 
     return ppi_table
 
@@ -106,7 +139,7 @@ def get_fixtures(league):
     )
 
     table_index = 10
-    if league in ["greece", "scotland", "scotland3", "scotland4"]:
+    if league in ALT_INDEX_LEAGUES:
         table_index = 9
 
     df = (
@@ -123,7 +156,12 @@ def get_fixtures(league):
     current_year = datetime.now().year
     df["Date"] = pd.to_datetime(df["Date"] + f" {current_year}", format="%a %d %b %Y")
     df["League"] = league
-    time.sleep(5)
+
+    delay = random.randint(5, 10)
+    print(f"Waiting {delay} seconds")
+    time.sleep(delay)
+
+    print(f"Getting fixtures for dates between {TODAY} to {END_DATE}")
 
     return filter_date_range(df, TODAY, END_DATE)
 
@@ -165,7 +203,14 @@ def merge_metrics(fixtures, metrics):
     return combined.reset_index(drop=True).sort_values("PPI_DIFF_NORM")
 
 
+# Main leagues
 main_fixtures = pd.concat([get_fixtures(league) for league in main_leagues])
 main_ppi_tables = pd.concat([get_ppi_tables(league) for league in main_leagues])
+merge_metrics(main_fixtures, main_ppi_tables).to_csv("PPI_LATEST_MAIN.csv", index=False)
 
-merge_metrics(main_fixtures, main_ppi_tables).to_csv("PPI_LATEST.csv", index=False)
+# Extra Leagues
+extra_fixtures = pd.concat([get_fixtures(league) for league in extra_leagues])
+extra_ppi_tables = pd.concat([get_ppi_tables(league) for league in extra_leagues])
+merge_metrics(extra_fixtures, extra_ppi_tables).to_csv(
+    "PPI_LATEST_EXTRA.csv", index=False
+)
