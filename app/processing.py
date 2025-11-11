@@ -1,3 +1,5 @@
+import asyncio
+
 import pandas as pd
 from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
@@ -38,8 +40,10 @@ class LeagueProcessor:
         )
 
     def get_fbref_data(self):
-        self.ingestion.get_fbref_data(
-            league=self.league, season=self.config.current_season
+        asyncio.run(
+            self.ingestion.get_fbref_data(
+                league=self.league, season=self.config.current_season
+            )
         )
 
     def get_fbduk_data(self):
