@@ -200,7 +200,7 @@ def merge_metrics(fixtures, metrics):
     combined["PPI_DIFF_NORM"] = round(
         abs(combined["hPPINorm"] - combined["aPPINorm"]), 2
     )
-    return combined.reset_index(drop=True).sort_values("PPI_DIFF_NORM")
+    return combined.reset_index(drop=True).sort_values("PPI_DIFF")
 
 
 # Main leagues
