@@ -133,12 +133,12 @@ class Leagues(Enum):
     }
 
     # # extra leagues
-    ARG = {
-        "fbref_id": 21,
-        "fbduk_id": "ARG",
-        "fbref_name": "Liga-Profesional-Argentina",
-        "is_extra": True,
-    }
+    # ARG = { # NOTE: Funky round column
+    #     "fbref_id": 21,
+    #     "fbduk_id": "ARG",
+    #     "fbref_name": "Liga-Profesional-Argentina",
+    #     "is_extra": True,
+    # }
 
     AUT = {
         "fbref_id": 56,

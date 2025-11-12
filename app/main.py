@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from pathlib import Path
 
@@ -10,6 +11,8 @@ from backtesting_validator import (
 )
 from config import DEFAULT_CONFIG, AppConfig, Leagues
 from processing import LeagueProcessor, get_historical_ppi
+from pydoll.browser import Chrome
+from pydoll.browser.options import ChromiumOptions
 from utils.data_merging import (
     merge_future_odds_data,
     merge_historical_odds_data,
@@ -165,7 +168,22 @@ class BettingPipeline:
             traceback.print_exc()
             return False
 
-    def run_get_data(self, season: str, league: str | None = None) -> bool:
+    def _get_chrome_options(self) -> ChromiumOptions:
+        options = ChromiumOptions()
+        options.add_argument("--headless=new")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument(
+            "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/121.0.0.0 Safari/537.36"
+        )
+        return options
+
+    async def run_get_data(self, season: str, league: str | None = None) -> bool:
         """Download data for all leagues for a specific season."""
         print(f"Downloading data for season: {season}")
 
@@ -182,7 +200,8 @@ class BettingPipeline:
             processor = LeagueProcessor(league, config)
             try:
                 print(f"Processing {league.name}...")
-                processor.get_fbref_data()
+                async with Chrome(options=self._get_chrome_options()) as browser:
+                    await processor.get_fbref_data(browser)
                 processor.get_fbduk_data()
                 successful_leagues.append(league.name)
             except Exception as e:
@@ -193,7 +212,8 @@ class BettingPipeline:
                 processor = LeagueProcessor(league, config)
                 try:
                     print(f"Processing {league.name}...")
-                    processor.get_fbref_data()
+                    async with Chrome(options=self._get_chrome_options()) as browser:
+                        await processor.get_fbref_data(browser)
                     processor.get_fbduk_data()
                     successful_leagues.append(league.name)
                 except Exception as e:
@@ -487,13 +507,13 @@ def main():
             if len(sys.argv) > 2:
                 season = sys.argv[2]
                 league = sys.argv[3]
-                pipeline.run_get_data(season, league)
+                asyncio.run(pipeline.run_get_data(season, league))
             else:
                 print("Usage: uv run app/main.py get_data <season> <league>")
 
         elif mode == "get_all_data":
             season = sys.argv[2]
-            pipeline.run_get_data(season)
+            asyncio.run(pipeline.run_get_data(season))
 
         elif mode == "latest_ppi":
             pipeline.run_latest_ppi()

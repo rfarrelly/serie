@@ -3,28 +3,12 @@ import time
 
 import pandas as pd
 from config import AppConfig, Leagues
-from curl_cffi import requests
 from pydoll.browser import Chrome
-from pydoll.browser.options import ChromiumOptions
-from pydoll.constants import By
 from utils.data_corrections import fix_scunthorpe_wealdestone_2025_2026
 from utils.datetime_helpers import format_date
 from utils.url_helpers import (
     fbduk_main_url_builder,
     fbref_url_builder,
-)
-
-options = ChromiumOptions()
-options.add_argument("--headless=new")
-options.add_argument("--window-size=1920,1080")
-options.add_argument("--disable-blink-features=AutomationControlled")
-options.add_argument("--no-sandbox")
-options.add_argument("--disable-dev-shm-usage")
-options.add_argument("--disable-gpu")
-options.add_argument(
-    "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/121.0.0.0 Safari/537.36"
 )
 
 
@@ -46,22 +30,26 @@ class DataIngestion:
         df.to_csv(f"{dir}/{filename}", index=False)
         print(f"File '{filename}' downloaded and saved to '{dir}'\r\n")
 
-    async def get_data_async(self, url: str):
-        async with Chrome(options=options) as browser:
-            tab = await browser.start()
-            async with tab.expect_and_bypass_cloudflare_captcha(
-                custom_selector=(By.ID, "TAYH8"), time_before_click=5
-            ):
+    async def get_data_async(self, browser: Chrome, url: str):
+        # Step 1: Open a new tab
+        tab = await browser.start()
+        try:
+            # Step 2: Load the page (and possibly bypass CAPTCHA)
+            async with tab.expect_and_bypass_cloudflare_captcha(time_before_click=5):
+                # Step 3: Allow page scripts / Cloudflare completion
+                await asyncio.sleep(2)
                 await tab.go_to(url)
-                print("Page loaded, waiting for captcha to be handled...")
-
-            print("Captcha handling completed, continuing ...")
-            await asyncio.sleep(3)
+                print(f"✅ Loaded: {url}")
+                # Step 4: Get page data (HTTP request or HTML)
             data = await tab.request.get(url)
-            await browser.stop()
             return data
+        except Exception as e:
+            print(f"⚠️ Error fetching {url}: {e}")
+            raise
+        finally:
+            await tab.close()
 
-    async def get_fbref_data(self, league: Leagues, season: str):
+    async def get_fbref_data(self, league: Leagues, season: str, browser):
         league_name = league.fbref_name
         url = fbref_url_builder(self.config.fbref_base_url, league, season)
         if league.is_extra:
@@ -71,7 +59,7 @@ class DataIngestion:
         else:
             dir_path = self.config.get_fbref_league_dir(league_name)
         try:
-            response = await self.get_data_async(url)
+            response = await self.get_data_async(browser, url)
         except Exception as e:
             print(e)
 

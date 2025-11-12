@@ -1,5 +1,3 @@
-import asyncio
-
 import pandas as pd
 from config import END_DATE, TODAY, AppConfig, Leagues
 from ingestion import DataIngestion
@@ -39,11 +37,9 @@ class LeagueProcessor:
             dtype={"Wk": int},
         )
 
-    def get_fbref_data(self):
-        asyncio.run(
-            self.ingestion.get_fbref_data(
-                league=self.league, season=self.config.current_season
-            )
+    async def get_fbref_data(self, browser):
+        await self.ingestion.get_fbref_data(
+            league=self.league, season=self.config.current_season, browser=browser
         )
 
     def get_fbduk_data(self):
