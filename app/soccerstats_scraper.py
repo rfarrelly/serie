@@ -111,6 +111,8 @@ def get_ppi_tables(league):
     ppi_table["TeamPPG"] = ppi_table["TeamPPG"].astype(float)
     ppi_table["PPI"] = ppi_table["PPI"].astype(float)
 
+    ppi_table.to_csv(f"SOCCERSTATS/{TODAY}_{league}.csv", index=False)
+
     league_average_ppg = ppi_table["TeamPPG"].mean()
 
     ppi_table["PPINorm"] = round(ppi_table["PPI"] / league_average_ppg**2, 2)
@@ -150,6 +152,9 @@ def get_fixtures(league):
             ["Date", "Home", "Time", "Away"]
         ]
     )
+
+    if df.empty:
+        return df
 
     df = df[~df["Time"].str.contains(r"\d+\s*-\s*\d+", regex=True, na=False)]
 
@@ -206,11 +211,13 @@ def merge_metrics(fixtures, metrics):
 # Main leagues
 main_fixtures = pd.concat([get_fixtures(league) for league in main_leagues])
 main_ppi_tables = pd.concat([get_ppi_tables(league) for league in main_leagues])
-merge_metrics(main_fixtures, main_ppi_tables).to_csv("PPI_LATEST_MAIN.csv", index=False)
+merge_metrics(main_fixtures, main_ppi_tables).to_csv(
+    f"{TODAY}_PPI_LATEST_MAIN.csv", index=False
+)
 
 # Extra Leagues
 extra_fixtures = pd.concat([get_fixtures(league) for league in extra_leagues])
 extra_ppi_tables = pd.concat([get_ppi_tables(league) for league in extra_leagues])
 merge_metrics(extra_fixtures, extra_ppi_tables).to_csv(
-    "PPI_LATEST_EXTRA.csv", index=False
+    f"{TODAY}_PPI_LATEST_EXTRA.csv", index=False
 )
