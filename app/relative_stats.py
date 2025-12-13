@@ -18,7 +18,7 @@ def compute_points(df: DF) -> DF:
 def compute_ppg(df: DF, shift: bool = 0) -> DF:
     df = df.sort_values(["Home", "Date"])
 
-    df["HPPG"] = (
+    df["HomePPG"] = (
         df.groupby("Home")["HP"]
         .expanding()
         .mean()
@@ -29,7 +29,7 @@ def compute_ppg(df: DF, shift: bool = 0) -> DF:
 
     df = df.sort_values(["Away", "Date"])
 
-    df["APPG"] = (
+    df["AwayPPG"] = (
         df.groupby("Away")["AP"]
         .expanding()
         .mean()
@@ -54,6 +54,7 @@ def compute_ppg(df: DF, shift: bool = 0) -> DF:
         long_df.groupby("Team")["Points"]
         .expanding()
         .mean()
+        .shift(shift)
         .round(2)
         .reset_index(level=0, drop=True)
     )
@@ -74,13 +75,53 @@ def compute_ppg(df: DF, shift: bool = 0) -> DF:
         .drop(["Team", "Points"], axis=1)
     ).sort_values("Date")
 
-    breakpoint()
+    return df
+
+
+def opposition_ppg(team: str, df: DF) -> DF:
+    def build_ppg(side: str, opp_side: str, ppg_col: str):
+        opp = df.loc[df[side] == team, ["Date", opp_side]].rename(
+            columns={opp_side: "Opponent"}
+        )
+
+        opp_ppg = (
+            df.pivot(index=opp_side, columns="Date", values=ppg_col)
+            .ffill(axis=1)
+            .reset_index()
+            .rename(columns={opp_side: "Team"})
+        )
+
+        merged = (
+            opp_ppg.merge(opp, left_on="Team", right_on="Opponent")
+            .drop("Team", axis=1)
+            .sort_values("Date")
+        )
+
+        front_cols = ["Date", "Opponent"]
+        date_cols = [c for c in merged.columns if c not in front_cols]
+        date_cols_sorted = sorted(date_cols, key=pd.to_datetime)
+        return merged[front_cols + date_cols_sorted]
+
+    home_ppg = build_ppg("Home", "Away", "AwayPPG")
+    away_ppg = build_ppg("Away", "Home", "HomePPG")
+
+    combined = (
+        pd.concat([home_ppg, away_ppg]).sort_values("Date").reset_index(drop=True)
+    )
+
+    combined.iloc[:, 2:] = (
+        combined.iloc[:, 2:].ffill(axis=1).expanding().mean().round(2).fillna(0)
+    )
+
+    return combined
 
 
 def main():
     points_df = compute_points(df)
 
     ppg_df = compute_ppg(points_df, shift=0)
+
+    opposition_ppg("York City", ppg_df)
 
 
 if __name__ == "__main__":
