@@ -2,6 +2,7 @@ from typing import List, TypeAlias
 
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 
 DF: TypeAlias = pd.DataFrame
 
@@ -97,7 +98,10 @@ def opposition_ppg(team: str, df: DF) -> DF:
             .sort_values("Date")
         )
 
-        front_cols = ["Date", "Opponent"]
+        merged["Team"] = team
+        merged["TeamSide"] = side
+
+        front_cols = ["Date", "Team", "TeamSide", "Opponent"]
         date_cols = [c for c in merged.columns if c not in front_cols]
         date_cols_sorted = sorted(date_cols, key=pd.to_datetime)
         return merged[front_cols + date_cols_sorted]
@@ -105,15 +109,43 @@ def opposition_ppg(team: str, df: DF) -> DF:
     home_ppg = build_ppg("Home", "Away", "AwayPPG")
     away_ppg = build_ppg("Away", "Home", "HomePPG")
 
-    combined = (
+    opps_ppg = (
         pd.concat([home_ppg, away_ppg]).sort_values("Date").reset_index(drop=True)
     )
 
-    combined.iloc[:, 2:] = (
-        combined.iloc[:, 2:].ffill(axis=1).expanding().mean().round(2).fillna(0)
+    opps_ppg.iloc[:, 4:] = (
+        opps_ppg.iloc[:, 4:].ffill(axis=1).expanding().mean().round(2).fillna(0)
     )
 
-    return combined
+    opps_ppg = opps_ppg.melt(
+        id_vars=["Date", "Team", "TeamSide", "Opponent"],
+        var_name="date",
+        value_name="MeanOppPPG",
+    )
+
+    opps_ppg = opps_ppg.loc[opps_ppg["Date"] == opps_ppg["date"]]
+
+    opps_ppg["Home"] = np.where(
+        opps_ppg["TeamSide"] == "Home", opps_ppg["Team"], opps_ppg["Opponent"]
+    )
+
+    opps_ppg["Away"] = np.where(
+        opps_ppg["TeamSide"] == "Away", opps_ppg["Team"], opps_ppg["Opponent"]
+    )
+
+    opps_ppg["MeanOppPPG(Home)"] = np.where(
+        opps_ppg["Team"] == opps_ppg["Home"], opps_ppg["MeanOppPPG"], np.nan
+    )
+
+    opps_ppg["MeanOppPPG(Away)"] = np.where(
+        opps_ppg["Team"] == opps_ppg["Away"], opps_ppg["MeanOppPPG"], np.nan
+    )
+
+    return opps_ppg[["Date", "Home", "Away", "MeanOppPPG(Home)", "MeanOppPPG(Away)"]]
+
+
+def compute_ppi(df: DF) -> DF:
+    breakpoint()
 
 
 def main():
@@ -121,7 +153,36 @@ def main():
 
     ppg_df = compute_ppg(points_df, shift=0)
 
-    opposition_ppg("York City", ppg_df)
+    teams = set(df["Home"]).union(df["Away"])
+
+    opps_ppg: List[DF] = []
+
+    for team in teams:
+        opps_ppg.append(opposition_ppg(team, ppg_df))
+    all_opps_ppg = pd.concat(opps_ppg)
+
+    all_opps_ppg[["MeanOppPPG(Home)", "MeanOppPPG(Away)"]] = all_opps_ppg.groupby(
+        ["Date", "Home", "Away"], as_index=False
+    )[["MeanOppPPG(Home)", "MeanOppPPG(Away)"]].transform("first")
+
+    all_opps_ppg = (
+        all_opps_ppg.dropna(how="any", axis=0).drop_duplicates().sort_values("Date")
+    )
+
+    ppg_df = ppg_df.merge(all_opps_ppg, on=["Date", "Home", "Away"])
+
+    ppg_df["HomePPI"] = (ppg_df["MeanOppPPG(Home)"] * ppg_df["HomeTotalPPG"]).round(2)
+    ppg_df["AwayPPI"] = (ppg_df["MeanOppPPG(Away)"] * ppg_df["AwayTotalPPG"]).round(2)
+
+    hpiv = ppg_df.pivot(index="Home", columns="Date", values="HomePPI")
+    apiv = ppg_df.pivot(index="Away", columns="Date", values="AwayPPI")
+
+    piv = hpiv.combine_first(apiv).ffill(axis=1).fillna(0)
+
+    # piv.loc["Scunthorpe Utd"].plot(kind="line")
+    # plt.show()
+
+    breakpoint()
 
 
 if __name__ == "__main__":
