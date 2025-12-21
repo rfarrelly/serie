@@ -111,7 +111,8 @@ def get_ppi_tables(league):
     ppi_table["TeamPPG"] = ppi_table["TeamPPG"].astype(float)
     ppi_table["PPI"] = ppi_table["PPI"].astype(float)
 
-    ppi_table.to_csv(f"SOCCERSTATS/{TODAY}_{league}.csv", index=False)
+    if league == "england5":
+        ppi_table.to_csv(f"SOCCERSTATS/{TODAY}_{league}.csv", index=False)
 
     league_average_ppg = ppi_table["TeamPPG"].mean()
 
