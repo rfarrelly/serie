@@ -2,11 +2,12 @@ from typing import List, TypeAlias
 
 import numpy as np
 import pandas as pd
-from matplotlib import pyplot as plt
 
 DF: TypeAlias = pd.DataFrame
 
-df = pd.read_csv("DATA/FBREF/National-League/National-League_2025-2026.csv")
+df = pd.read_csv("DATA/FBREF/National-League/National-League_2025-2026.csv")[
+    ["Date", "Home", "Away", "FTHG", "FTAG"]
+]
 
 
 def compute_points(df: DF) -> DF:
@@ -16,14 +17,13 @@ def compute_points(df: DF) -> DF:
     return df
 
 
-def compute_ppg(df: DF, shift: bool = 0) -> DF:
+def compute_ppg(df: DF) -> DF:
     df = df.sort_values(["Home", "Date"])
 
     df["HomePPG"] = (
         df.groupby("Home")["HP"]
         .expanding()
         .mean()
-        .shift(shift)
         .round(2)
         .reset_index(level=0, drop=True)
     )
@@ -34,7 +34,6 @@ def compute_ppg(df: DF, shift: bool = 0) -> DF:
         df.groupby("Away")["AP"]
         .expanding()
         .mean()
-        .shift(shift)
         .round(2)
         .reset_index(level=0, drop=True)
     )
@@ -55,7 +54,6 @@ def compute_ppg(df: DF, shift: bool = 0) -> DF:
         long_df.groupby("Team")["Points"]
         .expanding()
         .mean()
-        .shift(shift)
         .round(2)
         .reset_index(level=0, drop=True)
     )
@@ -145,20 +143,12 @@ def opposition_ppg(team: str, df: DF) -> DF:
 
 
 def compute_ppi(df: DF) -> DF:
-    breakpoint()
-
-
-def main():
-    points_df = compute_points(df)
-
-    ppg_df = compute_ppg(points_df, shift=0)
-
     teams = set(df["Home"]).union(df["Away"])
 
     opps_ppg: List[DF] = []
 
     for team in teams:
-        opps_ppg.append(opposition_ppg(team, ppg_df))
+        opps_ppg.append(opposition_ppg(team, df))
     all_opps_ppg = pd.concat(opps_ppg)
 
     all_opps_ppg[["MeanOppPPG(Home)", "MeanOppPPG(Away)"]] = all_opps_ppg.groupby(
@@ -169,20 +159,28 @@ def main():
         all_opps_ppg.dropna(how="any", axis=0).drop_duplicates().sort_values("Date")
     )
 
-    ppg_df = ppg_df.merge(all_opps_ppg, on=["Date", "Home", "Away"])
+    df = df.merge(all_opps_ppg, on=["Date", "Home", "Away"])
 
-    ppg_df["HomePPI"] = (ppg_df["MeanOppPPG(Home)"] * ppg_df["HomeTotalPPG"]).round(2)
-    ppg_df["AwayPPI"] = (ppg_df["MeanOppPPG(Away)"] * ppg_df["AwayTotalPPG"]).round(2)
+    df["HomePPI"] = (df["MeanOppPPG(Home)"] * df["HomeTotalPPG"]).round(2)
+    df["AwayPPI"] = (df["MeanOppPPG(Away)"] * df["AwayTotalPPG"]).round(2)
 
-    hpiv = ppg_df.pivot(index="Home", columns="Date", values="HomePPI")
-    apiv = ppg_df.pivot(index="Away", columns="Date", values="AwayPPI")
+    # PLOTTING
+    # hpiv = df.pivot(index="Home", columns="Date", values="HomePPI")
+    # apiv = df.pivot(index="Away", columns="Date", values="AwayPPI")
+    # hpiv.combine_first(apiv).ffill(axis=1).fillna(0)
 
-    piv = hpiv.combine_first(apiv).ffill(axis=1).fillna(0)
+    return df
+
+
+def main():
+    pts_df = compute_points(df)
+    ppg_df = compute_ppg(pts_df)
+    ppi_df = compute_ppi(ppg_df)
+
+    breakpoint()
 
     # piv.loc["Scunthorpe Utd"].plot(kind="line")
     # plt.show()
-
-    breakpoint()
 
 
 if __name__ == "__main__":
