@@ -2,6 +2,7 @@ from typing import List, TypeAlias
 
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 
 DF: TypeAlias = pd.DataFrame
 
@@ -167,7 +168,9 @@ def compute_ppi(df: DF) -> DF:
     # PLOTTING
     # hpiv = df.pivot(index="Home", columns="Date", values="HomePPI")
     # apiv = df.pivot(index="Away", columns="Date", values="AwayPPI")
-    # hpiv.combine_first(apiv).ffill(axis=1).fillna(0)
+    # piv = hpiv.combine_first(apiv).ffill(axis=1).fillna(0)
+    # piv.loc["Charleroi"].plot(kind="line")
+    # plt.show()
 
     return df
 
@@ -176,11 +179,7 @@ def main():
     pts_df = compute_points(df)
     ppg_df = compute_ppg(pts_df)
     ppi_df = compute_ppi(ppg_df)
-
     breakpoint()
-
-    # piv.loc["Scunthorpe Utd"].plot(kind="line")
-    # plt.show()
 
 
 if __name__ == "__main__":
