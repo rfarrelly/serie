@@ -107,7 +107,7 @@ def calculate_ppi_snapshot(games_so_far, team_ppgs, all_teams, current_date):
         )
 
         current_ppg = team_ppgs[team]["PPG"]
-        ppi = round(current_ppg * opp_ppg_avg, 2)
+        ppi = current_ppg * opp_ppg_avg
 
         records.append(
             {
@@ -188,14 +188,27 @@ def merge_ppi_into_matches(df, ppi_df):
 # -------------------------
 # Execution
 # -------------------------
-def compute_ppi(data: pd.DataFrame, shift: bool = False):
-    df = load_and_prepare_data(data)
+
+
+def compute_ppi(file_path: str, shift: bool = False):
+    df = load_and_prepare_data(file_path)
     all_teams = get_all_teams(df)
-    ppi_df = build_ppi_dataframe(df, all_teams, apply_shift=shift)
-    return merge_ppi_into_matches(df, ppi_df).dropna(how="any", axis="index")
+    return build_ppi_dataframe(df, all_teams, apply_shift=shift)
 
 
-ppi_df = compute_ppi(
-    data="DATA/FBREF/National-League/National-League_2025-2026.csv", shift=True
-)
-breakpoint()
+def compute_latest_ppi(ppi: pd.DataFrame, fixtures: pd.DataFrame = None):
+    return ppi.loc[ppi.groupby("Team")["Date"].idxmax()]
+
+
+def combine_historical_ppi(file_path: str, ppi_shifted: pd.DataFrame):
+    historical_matches = load_and_prepare_data(file_path)
+    return merge_ppi_into_matches(historical_matches, ppi_shifted).dropna(
+        how="any", axis="index"
+    )
+
+
+# ppi_df = compute_ppi(
+#     file_path="DATA/FBREF/National-League/National-League_2025-2026.csv", shift=False
+# )
+
+# latest_ppi = compute_latest_ppi(ppi=ppi_df)

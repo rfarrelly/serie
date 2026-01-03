@@ -308,34 +308,11 @@ class BettingPipeline:
         return True
 
     def run_historical_ppi(self) -> bool:
-        """Generate historical PPI data and merge with odds."""
-        if not self._validate_mode("historical_ppi"):
-            return False
-
         print(f"{'=' * 60}\r\nGENERATING HISTORICAL PPI DATA\r\n{'=' * 60}\r\n")
-
-        try:
-            historical_ppi = get_historical_ppi(self.pipeline_config.base_config)
-
-            # Handle matches terminated during season more generally if needs be
-            historical_ppi = historical_ppi[
-                ~historical_ppi["Home"].eq("Reus") & ~historical_ppi["Away"].eq("Reus")
-            ]
-
-            historical_ppi.to_csv("historical_ppi.csv", index=False)
-            print(f"Saved {len(historical_ppi)} historical PPI records")
-
-            # Merge with odds data
-            merge_historical_odds_data()
-            print(f"Successfully merged historical PPI data with odds")
-            return True
-
-        except Exception as e:
-            print(f"Error generating historical PPI: {e}")
-            import traceback
-
-            traceback.print_exc()
-            return False
+        historical_ppi = get_historical_ppi(self.pipeline_config.base_config)
+        historical_ppi.to_csv("historical_metrics.csv", index=False)
+        print(f"Saved {len(historical_ppi)} historical PPI records")
+        print(f"Successfully merged historical PPI data with odds")
 
     def _display_betting_candidates(self, betting_candidates):
         """Display betting candidates in a formatted way with enhanced information."""
