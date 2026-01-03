@@ -15,7 +15,9 @@ def get_points(g_for, g_against):
 
 
 def load_and_prepare_data(path):
-    df = pd.read_csv(path)[["Date", "Home", "Away", "FTHG", "FTAG"]]
+    df = pd.read_csv(path)[
+        ["League", "Season", "Day", "Date", "Home", "Away", "FTHG", "FTAG"]
+    ]
     df["Date"] = pd.to_datetime(df["Date"])
     df.sort_values("Date", inplace=True)
     return df
@@ -165,6 +167,9 @@ def merge_ppi_into_matches(df, ppi_df):
 
     return merged_df[
         [
+            "League",
+            "Season",
+            "Day",
             "Date",
             "Home",
             "Away",
@@ -193,3 +198,4 @@ def compute_ppi(data: pd.DataFrame, shift: bool = False):
 ppi_df = compute_ppi(
     data="DATA/FBREF/National-League/National-League_2025-2026.csv", shift=True
 )
+breakpoint()
