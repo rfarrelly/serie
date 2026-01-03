@@ -104,7 +104,7 @@ for current_date in unique_dates:
 
         # PPI Calculation
         current_ppg = team_ppgs[team]["PPG"]
-        ppi = current_ppg * opp_ppg_avg
+        ppi = round(current_ppg * opp_ppg_avg, 2)
 
         ppi_records.append(
             {
@@ -119,3 +119,41 @@ for current_date in unique_dates:
 # Create DataFrame
 ppi_df = pd.DataFrame(ppi_records)
 ppi_df.sort_values(["Date", "PPI"], ascending=[True, False], inplace=True)
+
+cols_to_shift = ["PPG", "Opponent_PPG", "PPI"]
+
+# Group by 'Team' and shift the selected columns down by 1
+ppi_df[cols_to_shift] = ppi_df.groupby("Team")[cols_to_shift].shift(1)
+
+# Resulting DataFrame (Sorted by Team and Date for better visibility)
+ppi_df = ppi_df.sort_values(["Team", "Date"])
+
+merged_df = df.merge(ppi_df, left_on=["Date", "Home"], right_on=["Date", "Team"])
+merged_df = merged_df.merge(ppi_df, left_on=["Date", "Away"], right_on=["Date", "Team"])
+
+merged_df = merged_df.rename(
+    columns={
+        "PPG_x": "HomeTeamTotalPPG",
+        "PPG_y": "AwayTeamTotalPPG",
+        "Opponent_PPG_x": "HomeTeamOpponentPPG",
+        "Opponent_PPG_y": "AwayTeamOpponentPPG",
+        "PPI_x": "HomeTeamPPI",
+        "PPI_y": "AwayTeamPPI",
+    }
+)
+
+merged_df = merged_df[
+    [
+        "Date",
+        "Home",
+        "Away",
+        "FTHG",
+        "FTAG",
+        "HomeTeamTotalPPG",
+        "AwayTeamTotalPPG",
+        "HomeTeamOpponentPPG",
+        "AwayTeamOpponentPPG",
+        "HomeTeamPPI",
+        "AwayTeamPPI",
+    ]
+]
