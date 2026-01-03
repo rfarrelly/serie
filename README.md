@@ -1,8 +1,6 @@
 # SERIE - Soccer Stats Past and Present
 
-## Generate week-by-week stats to track team progression
+## Generate time-series metrics to track team progression
 
-Football stats websites often don't provide metrics for previous weeks.
-This project let's you scrape data from fbref.com and generate plots showing
-how metrics like points-per-game (PPG), relative-perfoormance-index (RPI) etc 
-change over time.
+More and more football stats websites are paywalling previously open and free data. 
+The goal of this package is to allow you to generate the same metrics for any team in any league past or present from any data source.
