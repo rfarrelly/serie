@@ -1,14 +1,10 @@
 import numpy as np
 import pandas as pd
 
-df = pd.read_csv("DATA/FBREF/National-League/National-League_2025-2026.csv")[
-    ["Date", "Home", "Away", "FTHG", "FTAG"]
-]
-df["Date"] = pd.to_datetime(df["Date"])
-df.sort_values("Date", inplace=True)
 
-
-# Helper for points
+# -------------------------
+# Helpers
+# -------------------------
 def get_points(g_for, g_against):
     if g_for > g_against:
         return 3
@@ -18,22 +14,21 @@ def get_points(g_for, g_against):
         return 0
 
 
-# Unique Teams
-all_teams = sorted(list(set(df["Home"].unique()).union(set(df["Away"].unique()))))
+def load_and_prepare_data(path):
+    df = pd.read_csv(path)[["Date", "Home", "Away", "FTHG", "FTAG"]]
+    df["Date"] = pd.to_datetime(df["Date"])
+    df.sort_values("Date", inplace=True)
+    return df
 
-# Store results
-ppi_records = []
 
-# Iterate through each unique date to build the time series
-unique_dates = df["Date"].unique()
+def get_all_teams(df):
+    return sorted(set(df["Home"]).union(set(df["Away"])))
 
-for current_date in unique_dates:
-    # 1. Snapshot: Get all games played up to and including this date
-    games_so_far = df[df["Date"] <= current_date].copy()
 
-    # 2. Calculate Team Stats (Games, Points, Home Games, Home Points, Away Games, Away Points)
-    # We will compute this efficiently for the current snapshot
-
+# -------------------------
+# Core Calculations
+# -------------------------
+def calculate_team_stats(games_so_far, all_teams):
     stats = {
         team: {
             "GP": 0,
@@ -46,7 +41,7 @@ for current_date in unique_dates:
         for team in all_teams
     }
 
-    for idx, row in games_so_far.iterrows():
+    for _, row in games_so_far.iterrows():
         h, a = row["Home"], row["Away"]
         hg, ag = row["FTHG"], row["FTAG"]
 
@@ -63,21 +58,30 @@ for current_date in unique_dates:
         stats[a]["Away_GP"] += 1
         stats[a]["Away_Pts"] += ap
 
-    # 3. Calculate PPGs for the snapshot
+    return stats
+
+
+def calculate_team_ppgs(stats):
     team_ppgs = {}
+
     for team, s in stats.items():
-        # Overall PPG
         ppg = s["Pts"] / s["GP"] if s["GP"] > 0 else 0
-        # Home PPG
         home_ppg = s["Home_Pts"] / s["Home_GP"] if s["Home_GP"] > 0 else 0
-        # Away PPG
         away_ppg = s["Away_Pts"] / s["Away_GP"] if s["Away_GP"] > 0 else 0
 
-        team_ppgs[team] = {"PPG": ppg, "Home_PPG": home_ppg, "Away_PPG": away_ppg}
+        team_ppgs[team] = {
+            "PPG": ppg,
+            "Home_PPG": home_ppg,
+            "Away_PPG": away_ppg,
+        }
 
-    # 4. Calculate Opponent Strength and PPI for each team
+    return team_ppgs
+
+
+def calculate_ppi_snapshot(games_so_far, team_ppgs, all_teams, current_date):
+    records = []
+
     for team in all_teams:
-        # Get team's games
         team_games = games_so_far[
             (games_so_far["Home"] == team) | (games_so_far["Away"] == team)
         ]
@@ -85,14 +89,12 @@ for current_date in unique_dates:
         opponent_strength_sum = 0
         opponent_count = 0
 
-        for idx, row in team_games.iterrows():
+        for _, row in team_games.iterrows():
             if row["Home"] == team:
                 opponent = row["Away"]
-                # Played at Home -> Get Opponent's Away PPG
                 opp_strength = team_ppgs[opponent]["Away_PPG"]
             else:
                 opponent = row["Home"]
-                # Played Away -> Get Opponent's Home PPG
                 opp_strength = team_ppgs[opponent]["Home_PPG"]
 
             opponent_strength_sum += opp_strength
@@ -102,11 +104,10 @@ for current_date in unique_dates:
             opponent_strength_sum / opponent_count if opponent_count > 0 else 0
         )
 
-        # PPI Calculation
         current_ppg = team_ppgs[team]["PPG"]
         ppi = round(current_ppg * opp_ppg_avg, 2)
 
-        ppi_records.append(
+        records.append(
             {
                 "Date": current_date,
                 "Team": team,
@@ -116,44 +117,78 @@ for current_date in unique_dates:
             }
         )
 
-# Create DataFrame
-ppi_df = pd.DataFrame(ppi_records)
-ppi_df.sort_values(["Date", "PPI"], ascending=[True, False], inplace=True)
+    return records
 
-cols_to_shift = ["PPG", "Opponent_PPG", "PPI"]
 
-# Group by 'Team' and shift the selected columns down by 1
-ppi_df[cols_to_shift] = ppi_df.groupby("Team")[cols_to_shift].shift(1)
+def build_ppi_dataframe(df, all_teams, apply_shift=True):
+    ppi_records = []
 
-# Resulting DataFrame (Sorted by Team and Date for better visibility)
-ppi_df = ppi_df.sort_values(["Team", "Date"])
+    for current_date in df["Date"].unique():
+        games_so_far = df[df["Date"] <= current_date]
 
-merged_df = df.merge(ppi_df, left_on=["Date", "Home"], right_on=["Date", "Team"])
-merged_df = merged_df.merge(ppi_df, left_on=["Date", "Away"], right_on=["Date", "Team"])
+        stats = calculate_team_stats(games_so_far, all_teams)
+        team_ppgs = calculate_team_ppgs(stats)
 
-merged_df = merged_df.rename(
-    columns={
-        "PPG_x": "HomeTeamTotalPPG",
-        "PPG_y": "AwayTeamTotalPPG",
-        "Opponent_PPG_x": "HomeTeamOpponentPPG",
-        "Opponent_PPG_y": "AwayTeamOpponentPPG",
-        "PPI_x": "HomeTeamPPI",
-        "PPI_y": "AwayTeamPPI",
-    }
-)
+        ppi_records.extend(
+            calculate_ppi_snapshot(games_so_far, team_ppgs, all_teams, current_date)
+        )
 
-merged_df = merged_df[
-    [
-        "Date",
-        "Home",
-        "Away",
-        "FTHG",
-        "FTAG",
-        "HomeTeamTotalPPG",
-        "AwayTeamTotalPPG",
-        "HomeTeamOpponentPPG",
-        "AwayTeamOpponentPPG",
-        "HomeTeamPPI",
-        "AwayTeamPPI",
+    ppi_df = pd.DataFrame(ppi_records)
+    ppi_df.sort_values(["Date", "PPI"], ascending=[True, False], inplace=True)
+
+    if apply_shift:
+        cols_to_shift = ["PPG", "Opponent_PPG", "PPI"]
+        ppi_df[cols_to_shift] = ppi_df.groupby("Team")[cols_to_shift].shift(1)
+
+    return ppi_df.sort_values(["Team", "Date"])
+
+
+# -------------------------
+# Merge Back to Match Data
+# -------------------------
+def merge_ppi_into_matches(df, ppi_df):
+    merged_df = df.merge(ppi_df, left_on=["Date", "Home"], right_on=["Date", "Team"])
+    merged_df = merged_df.merge(
+        ppi_df, left_on=["Date", "Away"], right_on=["Date", "Team"]
+    )
+
+    merged_df = merged_df.rename(
+        columns={
+            "PPG_x": "HomeTeamTotalPPG",
+            "PPG_y": "AwayTeamTotalPPG",
+            "Opponent_PPG_x": "HomeTeamOpponentPPG",
+            "Opponent_PPG_y": "AwayTeamOpponentPPG",
+            "PPI_x": "HomeTeamPPI",
+            "PPI_y": "AwayTeamPPI",
+        }
+    )
+
+    return merged_df[
+        [
+            "Date",
+            "Home",
+            "Away",
+            "FTHG",
+            "FTAG",
+            "HomeTeamTotalPPG",
+            "AwayTeamTotalPPG",
+            "HomeTeamOpponentPPG",
+            "AwayTeamOpponentPPG",
+            "HomeTeamPPI",
+            "AwayTeamPPI",
+        ]
     ]
-]
+
+
+# -------------------------
+# Execution
+# -------------------------
+df = load_and_prepare_data("DATA/FBREF/National-League/National-League_2025-2026.csv")
+all_teams = get_all_teams(df)
+
+# Set apply_shift=False if you want current-day values instead
+ppi_df = build_ppi_dataframe(df, all_teams, apply_shift=True)
+
+merged_df = merge_ppi_into_matches(df, ppi_df)
+
+breakpoint()
