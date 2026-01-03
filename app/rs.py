@@ -183,12 +183,13 @@ def merge_ppi_into_matches(df, ppi_df):
 # -------------------------
 # Execution
 # -------------------------
-df = load_and_prepare_data("DATA/FBREF/National-League/National-League_2025-2026.csv")
-all_teams = get_all_teams(df)
+def compute_ppi(data: pd.DataFrame, shift: bool = False):
+    df = load_and_prepare_data(data)
+    all_teams = get_all_teams(df)
+    ppi_df = build_ppi_dataframe(df, all_teams, apply_shift=shift)
+    return merge_ppi_into_matches(df, ppi_df).dropna(how="any", axis="index")
 
-# Set apply_shift=False if you want current-day values instead
-ppi_df = build_ppi_dataframe(df, all_teams, apply_shift=True)
 
-merged_df = merge_ppi_into_matches(df, ppi_df)
-
-breakpoint()
+ppi_df = compute_ppi(
+    data="DATA/FBREF/National-League/National-League_2025-2026.csv", shift=True
+)
