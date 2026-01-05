@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import numpy as np
 import pandas as pd
 
@@ -190,21 +192,21 @@ def merge_ppi_into_matches(df, ppi_df):
 # -------------------------
 
 
-def compute_ppi(file_path: str, shift: bool = False):
+def compute_ppi(
+    file_path: str, shift: bool = False
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     df = load_and_prepare_data(file_path)
     all_teams = get_all_teams(df)
-    return build_ppi_dataframe(df, all_teams, apply_shift=shift)
+    return df, build_ppi_dataframe(df, all_teams, apply_shift=shift)
 
 
 def compute_latest_ppi(ppi: pd.DataFrame, fixtures: pd.DataFrame = None):
     return ppi.loc[ppi.groupby("Team")["Date"].idxmax()]
 
 
-def combine_historical_ppi(file_path: str, ppi_shifted: pd.DataFrame):
-    historical_matches = load_and_prepare_data(file_path)
-    return merge_ppi_into_matches(historical_matches, ppi_shifted).dropna(
-        how="any", axis="index"
-    )
+def compute_historical_ppi(file_path: str) -> pd.DataFrame:
+    matches, ppi_shifted = compute_ppi(file_path, shift=True)
+    return merge_ppi_into_matches(matches, ppi_shifted).dropna(how="any", axis="index")
 
 
 # ppi_df = compute_ppi(

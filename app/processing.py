@@ -112,8 +112,7 @@ def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
     for file_path in files:
         print(f"Processing {file_path}")
         try:
-            ppi_shifted = rs.compute_ppi(file_path=file_path, shift=True)
-            historical_metrics.append(rs.combine_historical_ppi(file_path, ppi_shifted))
+            historical_metrics.append(rs.compute_historical_ppi(file_path))
         except Exception as e:
             print(f"Failed to process {file_path}, continuing ... {e}")
             continue
