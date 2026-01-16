@@ -1,8 +1,7 @@
 import pandas as pd
 import rs
-from config import END_DATE, TODAY, AppConfig, Leagues
+from config import AppConfig, Leagues
 from ingestion import DataIngestion
-from utils.datetime_helpers import filter_date_range
 
 
 class LeagueProcessor:
@@ -18,24 +17,20 @@ class LeagueProcessor:
         self.ingestion = DataIngestion(config)
 
     @property
-    def played_matches_df(self):
-        filename = f"{self.league_name}_{self.config.current_season}.csv"
-        if self.league.is_extra:
-            filename = f"{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
-        return pd.read_csv(
-            self.fbref_dir / filename,
-            dtype={"Wk": int},
+    def played_matches(self):
+        file_path = (
+            f"{self.fbref_dir}/{self.league_name}_{self.config.current_season}.csv"
         )
+        if self.league.is_extra:
+            file_path = f"{self.fbref_dir}/{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
+        return file_path
 
     @property
-    def unplayed_matches_df(self):
-        filename = f"{self.league_name}_{self.config.current_season}.csv"
+    def unplayed_matches(self):
+        filen_path = f"{self.fbref_dir}/unplayed_{self.league_name}_{self.config.current_season}.csv"
         if self.league.is_extra:
-            filename = f"{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
-        return pd.read_csv(
-            self.fbref_dir / f"unplayed_{filename}",
-            dtype={"Wk": int},
-        )
+            filen_path = f"{self.fbref_dir}/unplayed_{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
+        return filen_path
 
     async def get_fbref_data(self, browser):
         await self.ingestion.get_fbref_data(
@@ -47,51 +42,8 @@ class LeagueProcessor:
             league=self.league, season=self.config.current_season
         )
 
-    # def get_points_performance_index(self) -> dict:
-    #     fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
-
-    #     if fixtures.empty:
-    #         print("No Fixtures for this date range")
-    #         return None
-
-    #     candidates = []
-
-    #     for fixture in fixtures.itertuples(index=False):
-    #          date, home_team, away_team = (
-    #             fixture.Date,
-    #             fixture.Home,
-    #             fixture.Away
-    #         )
-
-    #         # try:
-    #         #     ...
-    #         # except:
-    #         #     print(f"Error computing team metrics for {self.league_name} - {date}")
-    #         #     print(f"Continuing ...")
-    #         #     continue
-
-    #         candidates.append(
-    #             {
-    #                 "Wk": week,
-    #                 "Date": date,
-    #                 "League": self.league_name,
-    #                 "Home": home_team,
-    #                 "Away": away_team,
-    #                 "hOppPPG": home_opps_ppg,
-    #                 "aOppPPG": away_opps_ppg,
-    #                 "hPPG": home_ppg,
-    #                 "aPPG": away_ppg,
-    #                 "hPPI": latest_home_ppi,
-    #                 "aPPI": latest_away_ppi,
-    #                 "PPI_Diff": ppi_diff,
-    #                 "hPPINorm": latest_ppi_home_norm,
-    #                 "aPPINorm": latest_ppi_away_norm,
-    #                 "PPINorm_Diff": ppi_norm_diff,
-    #             }
-    #         )
-
-    #     candidates_df = pd.DataFrame(candidates)
-    #     return candidates_df.to_dict(orient="records")
+    def get_points_performance_index(self) -> pd.DataFrame:
+        return rs.compute_ppi_for_fixtures(self.unplayed_matches, self.played_matches)
 
 
 def get_historical_ppi(config: AppConfig) -> pd.DataFrame:

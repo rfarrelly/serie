@@ -238,12 +238,12 @@ class Leagues(Enum):
         "is_extra": True,
     }
 
-    USA = {
-        "fbref_id": 22,
-        "fbduk_id": "USA",
-        "fbref_name": "Major-League-Soccer",
-        "is_extra": True,
-    }
+    # USA = {
+    #     "fbref_id": 22,
+    #     "fbduk_id": "USA",
+    #     "fbref_name": "Major-League-Soccer",
+    #     "is_extra": True,
+    # }
 
     @property
     def fbref_id(self):

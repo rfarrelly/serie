@@ -13,10 +13,6 @@ from config import DEFAULT_CONFIG, AppConfig, Leagues
 from processing import LeagueProcessor, get_historical_ppi
 from pydoll.browser import Chrome
 from pydoll.browser.options import ChromiumOptions
-from utils.data_merging import (
-    merge_future_odds_data,
-    merge_historical_odds_data,
-)
 from utils.pipeline_config import (
     PipelineConfig,
     PipelineModeValidator,
@@ -232,10 +228,6 @@ class BettingPipeline:
         return len(failed_leagues) == 0
 
     def run_latest_ppi(self) -> bool:
-        """Generate latest PPI data and merge with odds."""
-        if not self._validate_mode("latest_ppi"):
-            return False
-
         print(f"{'=' * 60}\r\nGENERATING LATEST PPI PREDICTIONS\r\n{'=' * 60}\r\n")
 
         ppi_main_leagues = []
@@ -249,11 +241,16 @@ class BettingPipeline:
 
             try:
                 ppi = processor.get_points_performance_index()
-                if ppi:
+
+                if not isinstance(ppi, pd.DataFrame):
+                    print(f"  No PPI data for {league.name}")
+                    continue
+
+                if not ppi.empty:
                     if league.is_extra:
-                        ppi_extra_leagues.extend(ppi)
+                        ppi_extra_leagues.append(ppi)
                     else:
-                        ppi_main_leagues.extend(ppi)
+                        ppi_main_leagues.append(ppi)
                     print(f"  Generated {len(ppi)} PPI records for {league.name}")
                 else:
                     print(f"  No PPI data for {league.name}")
@@ -264,47 +261,28 @@ class BettingPipeline:
 
         from config import END_DATE, TODAY
 
-        print(f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}")
-
-        # Generate a file with PPI for both main and extra leagues
         if ppi_extra_leagues:
             print(
-                f"Getting PPI betting candidates for the period {TODAY} to {END_DATE}"
+                f"Getting EXTRA PPI betting candidates for the period {TODAY} to {END_DATE}"
             )
-            ppi_latest_main_extra = pd.concat(
-                [
-                    pd.DataFrame(ppi_main_leagues),
-                    pd.DataFrame(ppi_extra_leagues),
-                ]
-            ).sort_values(by="PPINorm_Diff")
-
-            ppi_latest_main_extra.to_csv("latest_ppi_main_extra.csv", index=False)
-            print(
-                f"Saved {len(ppi_latest_main_extra)} PPI records to latest_ppi_main_extra.csv"
-            )
+            ppi_latest_extra = pd.concat(ppi_extra_leagues).sort_values(by="PPIDiff")
+            ppi_latest_extra.to_csv(f"{TODAY}_latest_ppi_extra.csv", index=False)
+            print(f"Saved {len(ppi_latest_extra)} PPI records to latest_ppi_extra.csv")
         else:
             print("No PPI data generated for extra leagues")
 
-        if not ppi_main_leagues:
-            print("No PPI data generated for main leagues")
-            return False
-
-        # Generate PPI file for main leagues only and merge odds
-        ppi_latest = pd.DataFrame(ppi_main_leagues).sort_values(by="PPINorm_Diff")
-        ppi_latest.to_csv("latest_ppi.csv", index=False)
-        print(f"Saved {len(ppi_latest)} PPI records to latest_ppi.csv")
-
-        # Merge with odds data
-        try:
-            merge_future_odds_data()
-            print(f"Successfully merged PPI data with odds")
-        except Exception as e:
-            print(f"Error merging with odds data: {e}")
-            return False
+        if ppi_main_leagues:
+            print(
+                f"Getting MAIN PPI betting candidates for the period {TODAY} to {END_DATE}"
+            )
+            ppi_latest_main = pd.concat(ppi_main_leagues).sort_values(by="PPIDiff")
+            ppi_latest_main.to_csv(f"{TODAY}_latest_ppi_main.csv", index=False)
+            print(f"Saved {len(ppi_latest_main)} PPI records to latest_ppi_main.csv")
+        else:
+            print("No PPI data generated for extra leagues")
 
         if failed_leagues:
             print(f"Note: Failed leagues: {', '.join(failed_leagues)}")
-
         return True
 
     def run_historical_ppi(self) -> bool:
@@ -312,7 +290,6 @@ class BettingPipeline:
         historical_ppi = get_historical_ppi(self.pipeline_config.base_config)
         historical_ppi.to_csv("historical_metrics.csv", index=False)
         print(f"Saved {len(historical_ppi)} historical PPI records")
-        print(f"Successfully merged historical PPI data with odds")
 
     def _display_betting_candidates(self, betting_candidates):
         """Display betting candidates in a formatted way with enhanced information."""

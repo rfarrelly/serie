@@ -1,7 +1,8 @@
 from typing import Tuple
 
-import numpy as np
 import pandas as pd
+from config import END_DATE, TODAY
+from utils.datetime_helpers import filter_date_range
 
 
 # -------------------------
@@ -150,11 +151,20 @@ def build_ppi_dataframe(df, all_teams, apply_shift=True):
 # -------------------------
 # Merge Back to Match Data
 # -------------------------
-def merge_ppi_into_matches(df, ppi_df):
-    merged_df = df.merge(ppi_df, left_on=["Date", "Home"], right_on=["Date", "Team"])
-    merged_df = merged_df.merge(
-        ppi_df, left_on=["Date", "Away"], right_on=["Date", "Team"]
-    )
+def merge_ppi_into_matches(df: pd.DataFrame, ppi_df: pd.DataFrame) -> pd.DataFrame:
+    historical_columns = ["FTHG", "FTAG"]
+
+    if all(col in df.columns for col in historical_columns):
+        merged_df = df.merge(
+            ppi_df, left_on=["Date", "Home"], right_on=["Date", "Team"]
+        )
+        merged_df = merged_df.merge(
+            ppi_df, left_on=["Date", "Away"], right_on=["Date", "Team"]
+        )
+    else:
+        ppi_df.drop("Date", inplace=True, axis=1)
+        merged_df = df.merge(ppi_df, left_on=["Home"], right_on=["Team"])
+        merged_df = merged_df.merge(ppi_df, left_on=["Away"], right_on=["Team"])
 
     merged_df = merged_df.rename(
         columns={
@@ -167,24 +177,37 @@ def merge_ppi_into_matches(df, ppi_df):
         }
     )
 
-    return merged_df[
-        [
-            "League",
-            "Season",
-            "Day",
-            "Date",
-            "Home",
-            "Away",
-            "FTHG",
-            "FTAG",
-            "HomeTeamTotalPPG",
-            "AwayTeamTotalPPG",
-            "HomeTeamOpponentPPG",
-            "AwayTeamOpponentPPG",
-            "HomeTeamPPI",
-            "AwayTeamPPI",
-        ]
+    base_columns = [
+        "League",
+        "Season",
+        "Day",
+        "Date",
+        "Home",
+        "Away",
     ]
+
+    metrics_columns = [
+        "HomeTeamTotalPPG",
+        "AwayTeamTotalPPG",
+        "HomeTeamOpponentPPG",
+        "AwayTeamOpponentPPG",
+        "HomeTeamPPI",
+        "AwayTeamPPI",
+    ]
+
+    existing_historical = [c for c in historical_columns if c in df.columns]
+
+    final_columns = (
+        base_columns[:6]  # up to "Away"
+        + existing_historical  # insert right after Home/Away
+        + metrics_columns
+    )
+
+    merged_df = merged_df[final_columns]
+    merged_df["PPIDiff"] = abs(merged_df["HomeTeamPPI"] - merged_df["AwayTeamPPI"])
+    merged_df[merged_df.columns[6:]] = merged_df[merged_df.columns[6:]].round(2)
+
+    return merged_df
 
 
 # -------------------------
@@ -200,17 +223,20 @@ def compute_ppi(
     return df, build_ppi_dataframe(df, all_teams, apply_shift=shift)
 
 
-def compute_latest_ppi(ppi: pd.DataFrame, fixtures: pd.DataFrame = None):
-    return ppi.loc[ppi.groupby("Team")["Date"].idxmax()]
+def compute_ppi_for_fixtures(fixtures_path: str, historical_path: str):
+    fixtures_df = pd.read_csv(fixtures_path)
+    fixtures = filter_date_range(fixtures_df, TODAY, END_DATE)
+
+    if fixtures.empty:
+        print("No Fixtures for this date range")
+        return None
+
+    _, ppi = compute_ppi(historical_path, shift=False)
+    latest_ppi = ppi.loc[ppi.groupby("Team")["Date"].idxmax()]
+
+    return merge_ppi_into_matches(fixtures, latest_ppi).dropna(how="any", axis="index")
 
 
 def compute_historical_ppi(file_path: str) -> pd.DataFrame:
     matches, ppi_shifted = compute_ppi(file_path, shift=True)
     return merge_ppi_into_matches(matches, ppi_shifted).dropna(how="any", axis="index")
-
-
-# ppi_df = compute_ppi(
-#     file_path="DATA/FBREF/National-League/National-League_2025-2026.csv", shift=False
-# )
-
-# latest_ppi = compute_latest_ppi(ppi=ppi_df)
