@@ -1,7 +1,7 @@
 [project]
-name = "serie"
+name = "footbridge"
 version = "0.1.0"
-description = "Generate time series soccer stats"
+description = "Formulate, backtest and itterate betting strategies quicker"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
