@@ -1,6 +1,12 @@
-# SERIE - Soccer Stats Past and Present
+# FOOTBRIDGE
 
-## Generate time-series metrics to track team progression
+## An end-to-end framework for football data ingestion, metrics, and strategy backtesting.
 
-More and more football stats websites are paywalling previously open and free data. 
-The goal of this package is to allow you to generate the same metrics for any team in any league past or present from any data source.
+## Capture
+## Clean
+## Organise 
+## Combine 
+## Generate
+Generate features from captured data and generate sophisticated metrics.
+## Backtest
+
