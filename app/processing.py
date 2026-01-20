@@ -1,8 +1,7 @@
 import pandas as pd
-from config import END_DATE, TODAY, AppConfig, Leagues
+import rs
+from config import AppConfig, Leagues
 from ingestion import DataIngestion
-from metrics import LeagueMetrics, TeamMetrics
-from utils.datetime_helpers import filter_date_range
 
 
 class LeagueProcessor:
@@ -18,24 +17,20 @@ class LeagueProcessor:
         self.ingestion = DataIngestion(config)
 
     @property
-    def played_matches_df(self):
-        filename = f"{self.league_name}_{self.config.current_season}.csv"
-        if self.league.is_extra:
-            filename = f"{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
-        return pd.read_csv(
-            self.fbref_dir / filename,
-            dtype={"Wk": int},
+    def played_matches(self):
+        file_path = (
+            f"{self.fbref_dir}/{self.league_name}_{self.config.current_season}.csv"
         )
+        if self.league.is_extra:
+            file_path = f"{self.fbref_dir}/{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
+        return file_path
 
     @property
-    def unplayed_matches_df(self):
-        filename = f"{self.league_name}_{self.config.current_season}.csv"
+    def unplayed_matches(self):
+        filen_path = f"{self.fbref_dir}/unplayed_{self.league_name}_{self.config.current_season}.csv"
         if self.league.is_extra:
-            filename = f"{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
-        return pd.read_csv(
-            self.fbref_dir / f"unplayed_{filename}",
-            dtype={"Wk": int},
-        )
+            filen_path = f"{self.fbref_dir}/unplayed_{self.league.fbduk_id}_{self.league_name}_{self.config.current_season}.csv"
+        return filen_path
 
     async def get_fbref_data(self, browser):
         await self.ingestion.get_fbref_data(
@@ -47,81 +42,8 @@ class LeagueProcessor:
             league=self.league, season=self.config.current_season
         )
 
-    def get_points_performance_index(self) -> dict:
-        fixtures = filter_date_range(self.unplayed_matches_df, TODAY, END_DATE)
-
-        if fixtures.empty:
-            print("No Fixtures for this date range")
-            return None
-
-        candidates = []
-
-        for fixture in fixtures.itertuples(index=False):
-            week, date, home_team, away_team = (
-                fixture.Wk,
-                fixture.Date,
-                fixture.Home,
-                fixture.Away,
-            )
-
-            league_metrics = LeagueMetrics(matches=self.played_matches_df)
-
-            try:
-                home_team_metrics = TeamMetrics(
-                    home_team, self.played_matches_df, league_metrics
-                )
-                away_team_metrics = TeamMetrics(
-                    away_team, self.played_matches_df, league_metrics
-                )
-
-                latest_home_ppi = home_team_metrics.latest_points_performance_index
-                latest_away_ppi = away_team_metrics.latest_points_performance_index
-
-                ppi_diff = round(abs(latest_home_ppi - latest_away_ppi), 2)
-
-                latest_ppi_home_norm = (
-                    home_team_metrics.latest_points_performance_index_normalised
-                )
-                latest_ppi_away_norm = (
-                    away_team_metrics.latest_points_performance_index_normalised
-                )
-
-                ppi_norm_diff = round(
-                    abs(latest_ppi_home_norm - latest_ppi_away_norm), 2
-                )
-
-                home_ppg = home_team_metrics.latest_points_per_game
-                away_ppg = away_team_metrics.latest_points_per_game
-
-                home_opps_ppg = home_team_metrics.latest_opposition_points_per_game
-                away_opps_ppg = away_team_metrics.latest_opposition_points_per_game
-            except:
-                print(f"Error computing team metrics for {self.league_name} - {date}")
-                print(f"Continuing ...")
-                continue
-
-            candidates.append(
-                {
-                    "Wk": week,
-                    "Date": date,
-                    "League": self.league_name,
-                    "Home": home_team,
-                    "Away": away_team,
-                    "hOppPPG": home_opps_ppg,
-                    "aOppPPG": away_opps_ppg,
-                    "hPPG": home_ppg,
-                    "aPPG": away_ppg,
-                    "hPPI": latest_home_ppi,
-                    "aPPI": latest_away_ppi,
-                    "PPI_Diff": ppi_diff,
-                    "hPPINorm": latest_ppi_home_norm,
-                    "aPPINorm": latest_ppi_away_norm,
-                    "PPINorm_Diff": ppi_norm_diff,
-                }
-            )
-
-        candidates_df = pd.DataFrame(candidates)
-        return candidates_df.to_dict(orient="records")
+    def get_points_performance_index(self) -> pd.DataFrame:
+        return rs.compute_ppi_for_fixtures(self.unplayed_matches, self.played_matches)
 
 
 def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
@@ -139,32 +61,15 @@ def get_historical_ppi(config: AppConfig) -> pd.DataFrame:
 
     historical_metrics = []
 
-    for file in files:
-        print(f"Processing {file}")
-        matches = pd.read_csv(file, dtype={"Wk": int}).sort_values("Date")
-        teams = set(matches["Home"]).union(matches["Away"])
-
-        all_teams_metrics = [TeamMetrics(team, matches) for team in teams]
-        home_metrics = pd.concat([m.team_home_metrics() for m in all_teams_metrics])
-        away_metrics = pd.concat([m.team_away_metrics() for m in all_teams_metrics])
-
-        home_away_metrics = home_metrics.merge(
-            away_metrics, on=["Wk", "Date", "Home", "Away"]
-        ).sort_values("Date")
-
-        home_away_metrics["PPIDiff"] = round(
-            abs(home_away_metrics["hPPI"] - home_away_metrics["aPPI"]), 2
-        )
-
-        historical_matches_and_metrics = matches.merge(
-            home_away_metrics, on=["Wk", "Date", "Home", "Away"]
-        )
-
-        historical_metrics.append(historical_matches_and_metrics)
-
-    # NOTE: TODO
-    # Need to shift metrics ("hOppsPPG","hPPG","hPPI","aOppsPPG","aPPG","aPPI")
+    for file_path in files:
+        print(f"Processing {file_path}")
+        try:
+            historical_metrics.append(rs.compute_historical_ppi(file_path))
+        except Exception as e:
+            print(f"Failed to process {file_path}, continuing ... {e}")
+            continue
 
     historical_metrics = pd.concat(historical_metrics)
+
     print(f"Historical processor processed: {historical_metrics.shape[0]} records")
     return historical_metrics.sort_values("Date").reset_index(drop=True)

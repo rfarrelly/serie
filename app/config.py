@@ -133,12 +133,12 @@ class Leagues(Enum):
     }
 
     # # extra leagues
-    # ARG = { # NOTE: Funky round column
-    #     "fbref_id": 21,
-    #     "fbduk_id": "ARG",
-    #     "fbref_name": "Liga-Profesional-Argentina",
-    #     "is_extra": True,
-    # }
+    ARG = {  # NOTE: Funky round column
+        "fbref_id": 21,
+        "fbduk_id": "ARG",
+        "fbref_name": "Liga-Profesional-Argentina",
+        "is_extra": True,
+    }
 
     AUT = {
         "fbref_id": 56,
@@ -238,7 +238,6 @@ class Leagues(Enum):
         "is_extra": True,
     }
 
-    # NOTE: No week column WTF???
     # USA = {
     #     "fbref_id": 22,
     #     "fbduk_id": "USA",
